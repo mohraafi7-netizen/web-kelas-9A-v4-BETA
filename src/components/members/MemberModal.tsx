@@ -3,8 +3,11 @@
 import * as React from 'react';
 import { Modal } from '@/components/ui';
 import { GalaxyBadge } from '@/components/ui';
+import { GalaxyButton } from '@/components/ui';
 import { storage } from '@/lib/storage';
 import { getAttendanceLabel } from '@/data/memberPhotos';
+import { Mail } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import type { Profile } from '@/types';
 
 function getInitials(name: string) {
@@ -21,6 +24,7 @@ interface MemberModalProps {
 
 function MemberModal({ member, open, onClose }: MemberModalProps) {
   const [showInitials, setShowInitials] = React.useState(false);
+  const router = useRouter();
 
   const photoPath = member?.photo_path;
   const supabasePhoto = member?.photo_url ?? null;
@@ -64,9 +68,15 @@ function MemberModal({ member, open, onClose }: MemberModalProps) {
             <GalaxyBadge variant="secondary">{member.role}</GalaxyBadge>
           </div>
         )}
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-slate-400 mb-6">
           Member since {new Date(member.created_at).toLocaleDateString()}
         </p>
+        <div className="flex gap-3">
+          <GalaxyButton variant="secondary" onClick={() => router.push(`/messages/${member.id}`)} icon={<Mail className="w-4 h-4" />} className="flex-1">
+            Message
+          </GalaxyButton>
+          <GalaxyButton variant="ghost" onClick={onClose} className="flex-1">Close</GalaxyButton>
+        </div>
       </div>
     </Modal>
   );

@@ -2,8 +2,8 @@ import { createClientSupabase } from '@/lib/supabase/server';
 import { getAuthenticatedUser, requireRole } from '@/lib/auth/api-auth';
 import { NextResponse } from 'next/server';
 
-export async function GET() {
-  const authResult = await requireRole(['admin', 'main_admin'])(new Request('http://localhost'));
+export async function GET(request: Request) {
+  const authResult = await requireRole(['admin', 'main_admin'])(request);
   if (authResult instanceof Response) return authResult;
 
   const supabase = await createClientSupabase();

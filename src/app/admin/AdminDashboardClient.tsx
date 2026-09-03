@@ -33,6 +33,7 @@ const adminNavItems = [
   { href: '/admin/gallery', label: 'Gallery', icon: Image, key: 'gallery' },
   { href: '/admin/projects', label: 'Projects', icon: FolderOpen, key: 'projects' },
   { href: '/admin/polls', label: 'Polls', icon: BarChart3, key: 'polls' },
+  { href: '/admin/schedule', label: 'Schedule', icon: Calendar, key: 'schedule' },
   { href: '/admin/storage', label: 'Storage', icon: HardDrive, key: 'storage' },
 ];
 
@@ -40,19 +41,20 @@ function AdminDashboardClient() {
   const router = useRouter();
   const pathname = usePathname();
   const { profile, logout } = useAuth();
-  const [stats, setStats] = React.useState({ members: 0, admins: 0, announcements: 0, gallery: 0, projects: 0, tasks: 0, polls: 0, piketToday: 0 });
+  const [stats, setStats] = React.useState({ members: 0, admins: 0, announcements: 0, gallery: 0, projects: 0, tasks: 0, polls: 0, schedule: 0, piketToday: 0 });
 
   React.useEffect(() => {
     const supabase = createClientSupabaseBrowser();
 
     const fetchStats = async () => {
-      const [membersRes, announcementsRes, galleryRes, projectsRes, tasksRes, pollsRes] = await Promise.all([
+      const [membersRes, announcementsRes, galleryRes, projectsRes, tasksRes, pollsRes, scheduleRes] = await Promise.all([
         supabase.from('profiles').select('*', { count: 'exact', head: true }),
         supabase.from('announcements').select('*', { count: 'exact', head: true }),
         supabase.from('gallery').select('*', { count: 'exact', head: true }),
         supabase.from('projects').select('*', { count: 'exact', head: true }),
         supabase.from('tasks').select('*', { count: 'exact', head: true }),
         supabase.from('polls').select('*', { count: 'exact', head: true }),
+        supabase.from('schedule').select('*', { count: 'exact', head: true }),
       ]);
 
       const today = new Date().toISOString().slice(0, 10);
@@ -74,6 +76,7 @@ function AdminDashboardClient() {
         projects: projectsRes.count ?? 0,
         tasks: tasksRes.count ?? 0,
         polls: pollsRes.count ?? 0,
+        schedule: scheduleRes.count ?? 0,
         piketToday: piketCount ?? 0,
       });
     };
@@ -88,6 +91,7 @@ function AdminDashboardClient() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, fetchStats)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchStats)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'polls' }, fetchStats)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule' }, fetchStats)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'piket' }, fetchStats)
       .subscribe();
 
@@ -110,13 +114,14 @@ function AdminDashboardClient() {
 
   const statItems = [
     { label: 'Total Members', value: stats.members.toString(), icon: Users, color: 'from-galaxy-600 to-purple-600' },
-    { label: 'Admins', value: stats.admins.toString(), icon: Shield, color: 'from-red-600 to-rose-600' },
-    { label: 'Announcements', value: stats.announcements.toString(), icon: Bell, color: 'from-cyan-600 to-blue-600' },
-    { label: 'Gallery Items', value: stats.gallery.toString(), icon: Image, color: 'from-purple-600 to-pink-600' },
-    { label: 'Projects', value: stats.projects.toString(), icon: FolderOpen, color: 'from-amber-600 to-orange-600' },
-    { label: 'Tasks', value: stats.tasks.toString(), icon: ClipboardList, color: 'from-emerald-600 to-teal-600' },
+    { label: 'Admins', value: stats.admins.toString(), icon: Shield, color: 'from-red-600 to-pink-600' },
+    { label: 'Announcements', value: stats.announcements.toString(), icon: Bell, color: 'from-blue-600 to-cyan-600' },
+    { label: 'Gallery', value: stats.gallery.toString(), icon: Image, color: 'from-purple-600 to-pink-600' },
+    { label: 'Projects', value: stats.projects.toString(), icon: FolderOpen, color: 'from-emerald-600 to-teal-600' },
+    { label: 'Tasks', value: stats.tasks.toString(), icon: ClipboardList, color: 'from-orange-600 to-amber-600' },
     { label: 'Active Polls', value: stats.polls.toString(), icon: BarChart3, color: 'from-indigo-600 to-violet-600' },
-    { label: 'Piket Hari Ini', value: stats.piketToday.toString(), icon: Calendar, color: 'from-sky-600 to-cyan-600' },
+    { label: 'Schedule Items', value: stats.schedule.toString(), icon: Calendar, color: 'from-sky-600 to-cyan-600' },
+    { label: 'Piket Hari Ini', value: stats.piketToday.toString(), icon: Calendar, color: 'from-rose-600 to-red-600' },
   ];
 
   return (

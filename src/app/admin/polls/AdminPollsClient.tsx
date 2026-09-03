@@ -96,21 +96,44 @@ function AdminPollsClient() {
         if (error) throw error;
       } else {
         const { data, error } = await supabase.from('polls').insert(formData).select().single();
-        if (error) throw error;
+        if (error) {
+          console.error('[POLL SAVE ERROR]', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+          });
+          throw error;
+        }
         pollId = data.id;
       }
 
       if (pollId && !editingPoll) {
         const inserts = validOptions.map((text) => ({ poll_id: pollId, option_text: text }));
         const { error: optError } = await supabase.from('poll_options').insert(inserts);
-        if (optError) throw optError;
+        if (optError) {
+          console.error('[POLL OPTION SAVE ERROR]', {
+            message: optError.message,
+            code: optError.code,
+            details: optError.details,
+            hint: optError.hint,
+          });
+          throw optError;
+        }
       }
 
       showToast('success', editingPoll ? 'Polling berhasil diperbarui' : 'Polling berhasil dibuat');
       setIsModalOpen(false);
       fetchPolls();
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to save poll');
+      const error = err instanceof Error ? err : new Error('Failed to save poll');
+      console.error('[POLL SAVE EXCEPTION]', {
+        message: error.message,
+        code: (err as any)?.code,
+        details: (err as any)?.details,
+        hint: (err as any)?.hint,
+      });
+      showToast('error', `Gagal menyimpan polling: ${error.message}`);
     }
   };
 

@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui';
 import { BarChart3 } from 'lucide-react';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { useAuth } from '@/providers/AuthProvider';
+import { useToast } from '@/components/ui';
 import type { Poll } from '@/types';
 import PollVoteModal from '@/components/polls/PollVoteModal';
 
@@ -44,15 +45,26 @@ export default function PollsPage() {
   const [loading, setLoading] = React.useState(true);
   const [selectedPollId, setSelectedPollId] = React.useState<string | null>(null);
   const { profile } = useAuth();
+  const { showToast } = useToast();
 
   React.useEffect(() => {
     const supabase = createClientSupabaseBrowser();
     const fetchPolls = async () => {
       try {
-        const { data } = await supabase.from('polls').select('*').order('created_at', { ascending: false });
+        const { data, error } = await supabase.from('polls').select('*').order('created_at', { ascending: false });
+        if (error) {
+          console.error('[POLLS FETCH ERROR]', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+          });
+          showToast('error', `Gagal memuat polling: ${error.message}`);
+          return;
+        }
         setPolls(data ?? []);
-      } catch {
-        // silent
+      } catch (error) {
+        console.error('[POLLS FETCH EXCEPTION]', error);
       } finally {
         setLoading(false);
       }

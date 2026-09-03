@@ -12,7 +12,7 @@ import { useAuth } from '@/providers/AuthProvider';
 
 function PollVoteModal({ pollId, onClose }: { pollId: string; onClose: () => void }) {
   const { showToast } = useToast();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [poll, setPoll] = React.useState<Poll | null>(null);
   const [options, setOptions] = React.useState<PollOption[]>([]);
   const [results, setResults] = React.useState<{ options: (PollOption & { votes: number })[], totalVotes: number } | null>(null);
@@ -49,19 +49,38 @@ function PollVoteModal({ pollId, onClose }: { pollId: string; onClose: () => voi
 
   const handleVote = async () => {
     if (!selectedOption) return;
+    if (!profile?.id) {
+      showToast('error', 'Login diperlukan untuk voting');
+      return;
+    }
+
     setVoting(true);
     try {
       const supabase = createClientSupabaseBrowser();
       const { error } = await supabase.from('poll_votes').upsert(
-        { poll_id: pollId, option_id: selectedOption, user_id: user?.id },
+        { poll_id: pollId, option_id: selectedOption, user_id: profile.id },
         { onConflict: 'poll_id,user_id' }
       );
-      if (error) throw error;
+
+      if (error) {
+        console.error('[POLL VOTE ERROR]', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        throw error;
+      }
+
       showToast('success', 'Vote berhasil');
       const resultsRes = await fetch(`/api/polls/${pollId}/vote`).then((r) => r.json());
       if (resultsRes.options) setResults(resultsRes);
-    } catch {
-      showToast('error', 'Gagal voting');
+    } catch (err) {
+      const error = err as Error;
+      console.error('[POLL VOTE EXCEPTION]', {
+        message: error.message,
+      });
+      showToast('error', `Gagal voting: ${error.message}`);
     } finally {
       setVoting(false);
     }

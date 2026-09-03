@@ -6,7 +6,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { canViewAdminPanel, canManageRoles } from '@/lib/auth/permissions';
 
 const publicRoutes = ['/login', '/signup'];
-const memberRoutes = ['/dashboard', '/members', '/announcements', '/schedule', '/attendance', '/voting', '/materials', '/events', '/ranking', '/birthdays', '/duty', '/tasks', '/chat', '/gallery', '/projects', '/poetry', '/profile', '/settings'];
+const memberRoutes = ['/dashboard', '/members', '/announcements', '/schedule', '/attendance', '/voting', '/materials', '/events', '/ranking', '/birthdays', '/duty', '/tasks', '/chat', '/messages', '/gallery', '/projects', '/poetry', '/profile', '/settings'];
 const adminRoutes = ['/admin'];
 
 function RouteGuard({ children }: { children: React.ReactNode }) {

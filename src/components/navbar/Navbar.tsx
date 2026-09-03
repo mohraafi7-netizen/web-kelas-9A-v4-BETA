@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/providers/AuthProvider';
 import { canViewAdminPanel } from '@/lib/auth/permissions';
+import { useRouter } from 'next/navigation';
 
   const mainNavItems = [
     { href: '/', label: 'Home' },
@@ -38,6 +39,7 @@ function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false);
   const [scrolled, setScrolled] = React.useState(false);
   const pathname = usePathname();
+  const router = useRouter();
   const { profile } = useAuth();
 
   React.useEffect(() => {
@@ -45,6 +47,8 @@ function Navbar() {
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  const showAdminLink = canViewAdminPanel(profile?.role);
 
   return (
     <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'p-2' : 'p-4'} md:hidden`}>
@@ -153,13 +157,23 @@ function Navbar() {
                   </Link>
                 ))}
                 <div className="pt-2">
-                  <Link
-                    href="/login"
-                    onClick={() => setIsOpen(false)}
-                    className="block w-full text-center px-4 py-3 rounded-xl btn-cosmic text-white text-sm font-medium"
-                  >
-                    Admin
-                  </Link>
+                  {showAdminLink ? (
+                    <Link
+                      href="/admin"
+                      onClick={() => setIsOpen(false)}
+                      className="block w-full text-center px-4 py-3 rounded-xl btn-cosmic text-white text-sm font-medium"
+                    >
+                      Admin Tools
+                    </Link>
+                  ) : (
+                    <Link
+                      href="/login"
+                      onClick={() => setIsOpen(false)}
+                      className="block w-full text-center px-4 py-3 rounded-xl btn-cosmic text-white text-sm font-medium"
+                    >
+                      Admin
+                    </Link>
+                  )}
                 </div>
               </div>
             </motion.nav>

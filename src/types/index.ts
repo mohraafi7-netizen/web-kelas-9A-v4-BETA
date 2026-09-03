@@ -401,6 +401,25 @@ export interface Database {
           uploaded_by?: string | null;
         };
       };
+      private_messages: {
+        Row: {
+          id: string;
+          sender_id: string;
+          receiver_id: string;
+          message: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          sender_id?: string;
+          receiver_id?: string;
+          message?: string;
+          created_at?: string;
+        };
+        Update: {
+          message?: string;
+        };
+      };
     };
   };
 }
@@ -464,3 +483,7 @@ export type ProjectAttachmentUpdate = Database['public']['Tables']['project_atta
 export type AnnouncementAttachment = Database['public']['Tables']['announcement_attachments']['Row'];
 export type AnnouncementAttachmentInsert = Database['public']['Tables']['announcement_attachments']['Insert'];
 export type AnnouncementAttachmentUpdate = Database['public']['Tables']['announcement_attachments']['Update'];
+
+export type PrivateMessage = Database['public']['Tables']['private_messages']['Row'];
+export type PrivateMessageInsert = Database['public']['Tables']['private_messages']['Insert'];
+export type PrivateMessageUpdate = Database['public']['Tables']['private_messages']['Update'];

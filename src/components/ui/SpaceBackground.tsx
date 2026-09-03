@@ -22,6 +22,14 @@ interface Star {
   depth: number;
 }
 
+interface ShootingStar {
+  id: number;
+  top: string;
+  left: string;
+  duration: number;
+  delay: number;
+}
+
 function SpaceBackground({ className = '', particleCount, enableParallax }: SpaceBackgroundProps) {
   const tier = React.useMemo(() => getDeviceTier(), []);
   const count = particleCount ?? tier.particleCount;
@@ -72,6 +80,17 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
       opacity: Math.random() * 0.15 + 0.05,
     }));
   }, [tier.enableGlow]);
+
+  const shootingStars = React.useMemo(() => {
+    if (reducedMotion) return [];
+    return Array.from({ length: tier.enableGlow ? 3 : 1 }).map((_, i) => ({
+      id: i,
+      top: `${Math.random() * 40}%`,
+      left: `${Math.random() * 60}%`,
+      duration: Math.random() * 3 + 4,
+      delay: Math.random() * 8 + i * 3,
+    }));
+  }, [tier.enableGlow, reducedMotion]);
 
   const parallaxX = parallaxEnabled && !reducedMotion ? smoothX * 18 : 0;
   const parallaxY = parallaxEnabled && !reducedMotion ? smoothY * 18 : 0;
@@ -158,6 +177,25 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
           />
         ))}
       </div>
+
+      {/* Shooting stars */}
+      {!reducedMotion && (
+        <div className="absolute inset-0 overflow-hidden" style={getParallaxStyle(0.9)}>
+          {shootingStars.map((star) => (
+            <div
+              key={star.id}
+              className="absolute w-20 h-[1px] bg-gradient-to-r from-white/80 to-transparent rounded-full"
+              style={{
+                top: star.top,
+                left: star.left,
+                animation: `shootingStar ${star.duration}s ease-in-out infinite`,
+                animationDelay: `${star.delay}s`,
+                opacity: 0,
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Near stars */}
       <div className="absolute inset-0" style={getParallaxStyle(0.75)}>

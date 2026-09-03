@@ -109,10 +109,10 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <GalaxyButton 
-            type="submit" 
-            disabled={loading || !selectedName} 
-            className="w-full" 
+          <GalaxyButton
+            type="submit"
+            disabled={loading || !selectedName}
+            className="w-full"
             size="lg"
           >
             {loading ? 'Signing in...' : 'Login'}

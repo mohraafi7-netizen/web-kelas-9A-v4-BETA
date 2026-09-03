@@ -1,5 +1,5 @@
 import { createClientSupabase } from '@/lib/supabase/server';
-import { getAuthenticatedUser, requireRole } from '@/lib/auth/api-auth';
+import { getAuthenticatedUser } from '@/lib/auth/api-auth';
 import { NextResponse } from 'next/server';
 
 export async function GET(
@@ -44,7 +44,10 @@ export async function GET(
     const totalVotes = (votes ?? []).length;
 
     return NextResponse.json({ options: results, totalVotes });
-  } catch {
+  } catch (error) {
+    console.error('[Poll Vote GET Error]', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
     return NextResponse.json({ error: 'Failed to fetch poll results' }, { status: 500 });
   }
 }
@@ -54,13 +57,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authResult = await getAuthenticatedUser();
-    if (authResult instanceof Response) return authResult;
-    if (!authResult) {
+    const user = await getAuthenticatedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = authResult;
     const { id } = await params;
     const supabase = await createClientSupabase();
     const body = await request.json();
@@ -72,7 +73,15 @@ export async function POST(
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (existingError) throw existingError;
+    if (existingError) {
+      console.error('[Poll Vote POST Error]', {
+        message: existingError.message,
+        code: existingError.code,
+        details: existingError.details,
+        hint: existingError.hint,
+      });
+      throw existingError;
+    }
 
     if (existingVote) {
       const { data, error } = await supabase
@@ -82,7 +91,15 @@ export async function POST(
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[Poll Vote Update Error]', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        throw error;
+      }
       return NextResponse.json(data);
     }
 
@@ -96,9 +113,20 @@ export async function POST(
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('[Poll Vote Insert Error]', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
+      throw error;
+    }
     return NextResponse.json(data);
-  } catch {
+  } catch (error) {
+    console.error('[Poll Vote Exception]', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
     return NextResponse.json({ error: 'Failed to vote' }, { status: 500 });
   }
 }

@@ -190,6 +190,37 @@
 
 @keyframes pulse-slow {
   0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-shooting-star {
+  animation: shootingStar 6s ease-in-out infinite;
+}
+
+@keyframes shootingStar {
+  0% {
+    transform: translateX(0) translateY(0) scaleX(1);
+    opacity: 0;
+  }
+  2% {
+    opacity: 0.8;
+  }
+  4% {
+    transform: translateX(300px) translateY(150px) scaleX(1.2);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(300px) translateY(150px) scaleX(1.2);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-slow {
+  0%, 100% {
     opacity: 0.4;
   }
   50% {
