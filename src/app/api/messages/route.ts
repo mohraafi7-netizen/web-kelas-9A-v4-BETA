@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
     .from('private_messages')
     .select('sender_id, receiver_id, message, created_at')
     .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(100);
 
   if (error) {
     console.error('[Messages GET Error]', {
@@ -27,22 +28,32 @@ export async function GET(request: NextRequest) {
   }
 
   const conversations = new Map<string, { id: string; name: string; lastMessage: string; time: string }>();
+  const otherIds = new Set<string>();
 
   for (const msg of data ?? []) {
     const otherId = msg.sender_id === user.id ? msg.receiver_id : msg.sender_id;
     if (!conversations.has(otherId)) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('name')
-        .eq('id', otherId)
-        .single();
-
       conversations.set(otherId, {
         id: otherId,
-        name: profile?.name ?? 'Unknown',
+        name: '',
         lastMessage: msg.message,
         time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
+      otherIds.add(otherId);
+    }
+  }
+
+  if (otherIds.size > 0) {
+    const { data: profilesData } = await supabase
+      .from('profiles')
+      .select('id, name')
+      .in('id', Array.from(otherIds));
+
+    if (profilesData) {
+      const profileMap = new Map(profilesData.map((p) => [p.id, p.name]));
+      for (const [id, conv] of conversations) {
+        conv.name = profileMap.get(id) ?? 'Unknown';
+      }
     }
   }
 

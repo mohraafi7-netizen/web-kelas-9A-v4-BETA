@@ -45,13 +45,14 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
       try {
         const { data } = await supabase
           .from('private_messages')
-          .select('*')
+          .select('id, sender_id, receiver_id, message, created_at')
           .or(`and(sender_id.eq.${profile.id},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${profile.id})`)
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: true })
+          .limit(100);
 
         if (data) {
-          setMessages(data);
-          data.forEach((m) => processedRef.current.add(m.id));
+          setMessages(data as PrivateMessage[]);
+          (data as PrivateMessage[]).forEach((m) => processedRef.current.add(m.id));
         }
       } catch (error) {
         console.error('[Private Chat Fetch Error]', error);
@@ -82,14 +83,14 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
           table: 'private_messages',
           filter: `or(and(sender_id.eq.${profile.id},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${profile.id}))`,
         },
-        (payload) => {
+        (payload: { new: PrivateMessage }) => {
           const newMsg = payload.new as PrivateMessage;
           if (processedRef.current.has(newMsg.id)) return;
           processedRef.current.add(newMsg.id);
           setMessages((prev) => [...prev, newMsg]);
         }
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
           realtimeStatusRef.current = 'connected';
         } else if (status === 'CHANNEL_ERROR') {

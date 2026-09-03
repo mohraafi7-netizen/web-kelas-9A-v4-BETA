@@ -71,7 +71,7 @@ export default function GalleryPage() {
 
     const fetchGallery = async () => {
       try {
-        const { data } = await supabase.from('gallery').select('*').order('created_at', { ascending: false });
+        const { data } = await supabase.from('gallery').select('id, title, category, image_url, storage_path, created_at').order('created_at', { ascending: false }).limit(100);
         if (data) setItems(data as GalleryItem[]);
       } catch {
         // silent
@@ -84,7 +84,10 @@ export default function GalleryPage() {
 
     const channel = supabase
       .channel('gallery-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'gallery' }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gallery' }, () => {
+        fetchGallery();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'gallery' }, () => {
         fetchGallery();
       })
       .subscribe();

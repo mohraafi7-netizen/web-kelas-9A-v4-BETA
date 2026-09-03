@@ -29,11 +29,12 @@ function AnnouncementsClient({ announcements }: { announcements?: Announcement[]
     const fetchAnnouncements = async () => {
       const { data } = await supabase
         .from('announcements')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('id, title, content, created_at, author')
+        .order('created_at', { ascending: false })
+        .limit(100);
 
       if (data) {
-        setItems(data);
+        setItems(data as Announcement[]);
       }
       setLoading(false);
     };
@@ -49,15 +50,15 @@ function AnnouncementsClient({ announcements }: { announcements?: Announcement[]
           schema: 'public',
           table: 'announcements',
         },
-        (payload) => {
+        (payload: { eventType: string; new: Announcement; old?: Announcement }) => {
           if (payload.eventType === 'INSERT') {
             setItems((prev) => [payload.new as Announcement, ...prev]);
           } else if (payload.eventType === 'UPDATE') {
             setItems((prev) =>
               prev.map((item) => (item.id === payload.new.id ? (payload.new as Announcement) : item))
             );
-          } else if (payload.eventType === 'DELETE') {
-            setItems((prev) => prev.filter((item) => item.id !== payload.old.id));
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setItems((prev) => prev.filter((item) => item.id !== payload.old!.id));
           }
         }
       )
@@ -71,7 +72,7 @@ function AnnouncementsClient({ announcements }: { announcements?: Announcement[]
   React.useEffect(() => {
     const fetchAttachments = async () => {
       const supabase = createClientSupabaseBrowser();
-      const { data } = await supabase.from('announcement_attachments').select('*').in('announcement_id', items.map((i) => i.id));
+      const { data } = await supabase.from('announcement_attachments').select('id, announcement_id, file_name, storage_path, file_type, file_size').in('announcement_id', items.map((i) => i.id));
       if (data) {
         const map: Record<string, AnnouncementAttachment[]> = {};
         for (const att of data) {

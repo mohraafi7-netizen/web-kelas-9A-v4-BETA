@@ -7,7 +7,7 @@ export async function GET() {
     const supabase = await createClientSupabase();
     const { data, error } = await supabase
       .from('schedule')
-      .select('*')
+      .select('id, day, time_start, time_end, subject, teacher, room')
       .order('day', { ascending: true })
       .order('time_start', { ascending: true });
 

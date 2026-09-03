@@ -10,7 +10,14 @@ import { useAuth } from '@/providers/AuthProvider';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { useToast } from '@/components/ui';
 
-function ChatMessage({ username, message, time, isOwn }: { username: string; message: string; time: string; isOwn: boolean }) {
+type ChatMessage = {
+  id: string;
+  username: string;
+  message: string;
+  time: string;
+};
+
+function ChatMessageComponent({ username, message, time, isOwn }: { username: string; message: string; time: string; isOwn: boolean }) {
   return (
     <div className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}>
       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-galaxy-600 to-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
@@ -32,19 +39,28 @@ function ChatMessage({ username, message, time, isOwn }: { username: string; mes
 export default function ChatPage() {
   const { profile } = useAuth();
   const { showToast } = useToast();
-  const [messages, setMessages] = React.useState<Array<{ id: string; username: string; message: string; time: string }>>([]);
+  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [input, setInput] = React.useState('');
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const processedRef = React.useRef<Set<string>>(new Set());
   const realtimeStatusRef = React.useRef<'connecting' | 'connected' | 'failed'>('connecting');
   const fallbackIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentMessageIdsRef = React.useRef<Set<string>>(new Set());
+  const scrollRafRef = React.useRef<number | null>(null);
 
   const scrollToBottom = React.useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollRafRef.current) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      scrollRafRef.current = null;
+    });
   }, []);
 
   React.useEffect(() => {
     scrollToBottom();
+    return () => {
+      if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+    };
   }, [messages, scrollToBottom]);
 
   React.useEffect(() => {
@@ -54,12 +70,12 @@ export default function ChatPage() {
       try {
         const { data } = await supabase
           .from('chat_messages')
-          .select('*')
+          .select('id, username, message, created_at')
           .order('created_at', { ascending: true })
           .limit(100);
 
         if (data) {
-          const mapped = data.map((msg) => ({
+          const mapped: ChatMessage[] = (data as Array<{ id: string; username: string; message: string; created_at: string }>).map((msg) => ({
             id: msg.id,
             username: msg.username,
             message: msg.message,
@@ -67,6 +83,7 @@ export default function ChatPage() {
           }));
           setMessages(mapped);
           mapped.forEach((m) => processedRef.current.add(m.id));
+          currentMessageIdsRef.current = new Set(mapped.map((m) => m.id));
         }
       } catch (error) {
         console.error('[CHAT FETCH ERROR]', error);
@@ -84,11 +101,12 @@ export default function ChatPage() {
           schema: 'public',
           table: 'chat_messages',
         },
-        (payload) => {
+        (payload: { new: { id: string; username: string; message: string; created_at: string } }) => {
           const newMsg = payload.new as { id: string; username: string; message: string; created_at: string };
           if (processedRef.current.has(newMsg.id)) return;
 
           processedRef.current.add(newMsg.id);
+          currentMessageIdsRef.current.add(newMsg.id);
           setMessages((prev) => [
             ...prev,
             {
@@ -100,7 +118,7 @@ export default function ChatPage() {
           ]);
         }
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
           realtimeStatusRef.current = 'connected';
         } else if (status === 'CHANNEL_ERROR') {
@@ -115,35 +133,36 @@ export default function ChatPage() {
   }, []);
 
   React.useEffect(() => {
-    if (realtimeStatusRef.current === 'failed') {
-      fallbackIntervalRef.current = setInterval(() => {
-        const supabase = createClientSupabaseBrowser();
-        supabase
-          .from('chat_messages')
-          .select('*')
-          .order('created_at', { ascending: true })
-          .limit(100)
-          .then(({ data }) => {
-            if (data) {
-              const mapped = data.map((msg) => ({
-                id: msg.id,
-                username: msg.username,
-                message: msg.message,
-                time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              }));
-              const currentIds = new Set(messages.map((m) => m.id));
-              const newMessages = mapped.filter((m) => !currentIds.has(m.id));
-              if (newMessages.length > 0) {
-                setMessages((prev) => {
-                  const updated = [...prev, ...newMessages];
-                  newMessages.forEach((m) => processedRef.current.add(m.id));
-                  return updated;
-                });
-              }
+    if (realtimeStatusRef.current !== 'failed') return;
+
+    fallbackIntervalRef.current = setInterval(() => {
+      const supabase = createClientSupabaseBrowser();
+      supabase
+        .from('chat_messages')
+        .select('id, username, message, created_at')
+        .order('created_at', { ascending: true })
+        .limit(100)
+          .then((result: { data: Array<{ id: string; username: string; message: string; created_at: string }> | null }) => {
+            if (result.data) {
+              const mapped: ChatMessage[] = result.data.map((msg) => ({
+            id: msg.id,
+            username: msg.username,
+            message: msg.message,
+            time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }));
+          const currentIds = currentMessageIdsRef.current;
+          const newMessages = mapped.filter((m) => !currentIds.has(m.id));
+            if (newMessages.length > 0) {
+              setMessages((prev) => {
+                const updated = [...prev, ...newMessages];
+                newMessages.forEach((m) => processedRef.current.add(m.id));
+                currentMessageIdsRef.current = new Set(updated.map((m) => m.id));
+                return updated;
+              });
             }
-          });
-      }, 3000);
-    }
+          }
+        });
+    }, 3000);
 
     return () => {
       if (fallbackIntervalRef.current) {
@@ -151,14 +170,14 @@ export default function ChatPage() {
         fallbackIntervalRef.current = null;
       }
     };
-  }, [messages]);
+  }, []);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !profile) return;
 
     const tempId = `temp-${Date.now()}`;
-    const optimisticMessage = {
+    const optimisticMessage: ChatMessage = {
       id: tempId,
       username: profile.name,
       message: input.trim(),
@@ -166,6 +185,7 @@ export default function ChatPage() {
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
+    currentMessageIdsRef.current.add(tempId);
     setInput('');
 
     const supabase = createClientSupabaseBrowser();
@@ -178,7 +198,11 @@ export default function ChatPage() {
     if (error) {
       console.error('[CHAT SEND ERROR]', error);
       showToast('error', 'Failed to send message');
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setMessages((prev) => {
+        const filtered = prev.filter((m) => m.id !== tempId);
+        currentMessageIdsRef.current = new Set(filtered.map((m) => m.id));
+        return filtered;
+      });
     }
   };
 
@@ -204,7 +228,7 @@ export default function ChatPage() {
                 </div>
               ) : (
                 messages.map((msg) => (
-                  <ChatMessage
+                  <ChatMessageComponent
                     key={msg.id}
                     {...msg}
                     isOwn={profile ? msg.username === profile.name : false}

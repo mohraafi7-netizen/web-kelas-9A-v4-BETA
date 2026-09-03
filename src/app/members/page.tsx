@@ -22,7 +22,7 @@ export default function MembersPage() {
 
     const fetchMembers = async () => {
       try {
-        const { data } = await supabase.from('profiles').select('*').order('name');
+        const { data } = await supabase.from('profiles').select('id, name, role, photo_path, created_at').order('name').limit(200);
         if (data && data.length > 0) {
           setMembers(data);
         } else {
@@ -39,7 +39,7 @@ export default function MembersPage() {
 
     const channel = supabase
       .channel('members-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: 'id=neq.00000000-0000-0000-0000-000000000000' }, () => {
         fetchMembers();
       })
       .subscribe();

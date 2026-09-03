@@ -7,7 +7,7 @@ export async function GET() {
     const supabase = await createClientSupabase();
     const { data, error } = await supabase
       .from('chat_messages')
-      .select('*')
+      .select('id, username, message, created_at')
       .order('created_at', { ascending: true })
       .limit(100);
 
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       .from('chat_messages')
       .insert({
         user_id: user.id,
-        username: body.username,
+        username: user.email,
         message: body.message,
       })
       .select()

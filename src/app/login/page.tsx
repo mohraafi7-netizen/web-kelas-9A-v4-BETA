@@ -27,8 +27,8 @@ export default function LoginPage() {
       .from('profiles')
       .select('id, name')
       .order('name')
-      .then(({ data }) => {
-        if (data) setProfiles(data);
+      .then((result: { data: Array<{ id: string; name: string }> | null }) => {
+        if (result.data) setProfiles(result.data);
       });
   }, []);
 

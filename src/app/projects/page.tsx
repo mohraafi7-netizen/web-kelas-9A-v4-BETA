@@ -102,7 +102,7 @@ export default function ProjectsPage() {
 
     const fetchProjects = async () => {
       try {
-        const { data } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
+        const { data } = await supabase.from('projects').select('id, title, description, category, image_url, link, created_at').order('created_at', { ascending: false }).limit(50);
         if (data) setProjects(data as Project[]);
       } catch {
         // silent
@@ -115,7 +115,10 @@ export default function ProjectsPage() {
 
     const channel = supabase
       .channel('projects-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'projects' }, () => {
+        fetchProjects();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'projects' }, () => {
         fetchProjects();
       })
       .subscribe();

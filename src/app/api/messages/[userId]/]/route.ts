@@ -13,9 +13,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { data, error } = await supabase
     .from('private_messages')
-    .select('*')
+    .select('id, sender_id, receiver_id, message, created_at')
     .or(`and(sender_id.eq.${user.id},receiver_id.eq.${userId}),and(sender_id.eq.${userId},receiver_id.eq.${user.id})`)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .limit(100);
 
   if (error) {
     console.error('[Messages User GET Error]', {

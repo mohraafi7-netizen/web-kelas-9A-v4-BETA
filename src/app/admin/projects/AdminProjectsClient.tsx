@@ -31,7 +31,7 @@ function AdminProjectsClient() {
     setError(null);
     try {
       const supabase = createClientSupabaseBrowser();
-      const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('projects').select('id, title, description, category, image_url, link, created_at').order('created_at', { ascending: false });
       if (error) throw error;
       setProjects(data ?? []);
     } catch (err) {
@@ -49,6 +49,9 @@ function AdminProjectsClient() {
     e.preventDefault();
     const supabase = createClientSupabaseBrowser();
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const uploadedBy = user?.id || null;
+
       let projectId = editingItem?.id;
       if (editingItem) {
         await supabase.from('projects').update(formData).eq('id', editingItem.id);
@@ -58,9 +61,9 @@ function AdminProjectsClient() {
         projectId = data.id;
       }
 
-      if (projectId) {
-        for (const file of pendingFiles) {
-          setUploading(true);
+      if (projectId && pendingFiles.length > 0) {
+        setUploading(true);
+        const uploads = pendingFiles.map(async (file) => {
           const path = storage.generatePath('projects', projectId, file.name);
           const { error: uploadError } = await supabase.storage.from('project-attachments').upload(path, file, {
             upsert: true,
@@ -69,15 +72,17 @@ function AdminProjectsClient() {
           });
           if (uploadError) throw uploadError;
 
-          await supabase.from('project_attachments').insert({
+          return supabase.from('project_attachments').insert({
             project_id: projectId,
             file_name: file.name,
             storage_path: path,
             file_type: file.type,
             file_size: file.size,
-            uploaded_by: (await supabase.auth.getUser()).data.user?.id || null,
+            uploaded_by: uploadedBy,
           });
-        }
+        });
+
+        await Promise.all(uploads);
       }
 
       showToast('success', editingItem ? 'Project updated' : 'Project created');

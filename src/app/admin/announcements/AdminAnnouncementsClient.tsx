@@ -31,7 +31,7 @@ function AdminAnnouncementsClient() {
     setError(null);
     try {
       const supabase = createClientSupabaseBrowser();
-      const { data, error } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('announcements').select('id, title, content, created_at, author').order('created_at', { ascending: false }).limit(100);
       if (error) throw error;
       setAnnouncements(data ?? []);
     } catch (err) {
@@ -49,6 +49,9 @@ function AdminAnnouncementsClient() {
     e.preventDefault();
     const supabase = createClientSupabaseBrowser();
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const uploadedBy = user?.id || null;
+
       let announcementId = editingItem?.id;
       if (editingItem) {
         await supabase.from('announcements').update(formData).eq('id', editingItem.id);
@@ -58,9 +61,9 @@ function AdminAnnouncementsClient() {
         announcementId = data.id;
       }
 
-      if (announcementId) {
-        for (const file of pendingFiles) {
-          setUploading(true);
+      if (announcementId && pendingFiles.length > 0) {
+        setUploading(true);
+        const uploads = pendingFiles.map(async (file) => {
           const path = storage.generatePath('announcements', announcementId, file.name);
           const { error: uploadError } = await supabase.storage.from('announcement-attachments').upload(path, file, {
             upsert: true,
@@ -69,15 +72,17 @@ function AdminAnnouncementsClient() {
           });
           if (uploadError) throw uploadError;
 
-          await supabase.from('announcement_attachments').insert({
+          return supabase.from('announcement_attachments').insert({
             announcement_id: announcementId,
             file_name: file.name,
             storage_path: path,
             file_type: file.type,
             file_size: file.size,
-            uploaded_by: (await supabase.auth.getUser()).data.user?.id || null,
+            uploaded_by: uploadedBy,
           });
-        }
+        });
+
+        await Promise.all(uploads);
       }
 
       showToast('success', editingItem ? 'Announcement updated' : 'Announcement created');

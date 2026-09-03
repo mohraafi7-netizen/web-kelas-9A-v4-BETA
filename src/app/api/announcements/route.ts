@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 export async function GET() {
   try {
     const supabase = await createClientSupabase();
-    const { data, error } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('announcements').select('id, title, content, created_at, author').order('created_at', { ascending: false }).limit(50);
     if (error) throw error;
     return NextResponse.json(data);
   } catch (error) {

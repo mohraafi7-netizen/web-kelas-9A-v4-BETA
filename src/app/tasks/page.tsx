@@ -268,7 +268,7 @@ export default function TasksPage() {
 
   const fetchAllAttachments = React.useCallback(async (taskIds: string[]) => {
     const supabase = createClientSupabaseBrowser();
-    const { data } = await supabase.from('task_attachments').select('*').in('task_id', taskIds);
+    const { data } = await supabase.from('task_attachments').select('id, task_id, file_name, storage_path, file_type, file_size, created_at').in('task_id', taskIds);
     if (data) {
       const map: Record<string, TaskAttachment[]> = {};
       for (const att of data) {
@@ -282,10 +282,10 @@ export default function TasksPage() {
   const fetchTasks = React.useCallback(async () => {
     try {
       const supabase = createClientSupabaseBrowser();
-      const { data } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
+      const { data } = await supabase.from('tasks').select('id, title, description, subject, deadline, status, created_at').order('created_at', { ascending: false }).limit(100);
       if (data) {
         setTasks(data as Task[]);
-        const taskIds = data.map((t) => t.id);
+        const taskIds = (data as Task[]).map((t) => t.id);
         if (taskIds.length > 0) {
           fetchAllAttachments(taskIds);
         }
@@ -322,10 +322,16 @@ export default function TasksPage() {
     const supabase = createClientSupabaseBrowser();
     const channel = supabase
       .channel('tasks-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, () => {
         fetchTasks();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_completions' }, () => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, () => {
+        fetchTasks();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'task_completions' }, () => {
+        fetchCompletions();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'task_completions' }, () => {
         fetchCompletions();
       })
       .subscribe();
@@ -440,7 +446,7 @@ export default function TasksPage() {
   const handleComplete = async (id: string) => {
     if (!profile) return;
     const supabase = createClientSupabaseBrowser();
-    const { data: existing } = await supabase.from('task_completions').select('*').eq('task_id', id).eq('user_id', profile.id).maybeSingle();
+    const { data: existing } = await supabase.from('task_completions').select('id').eq('task_id', id).eq('user_id', profile.id).maybeSingle();
 
     if (existing) {
       const { error } = await supabase.from('task_completions').delete().eq('id', existing.id);
@@ -474,22 +480,26 @@ export default function TasksPage() {
     }
   };
 
-  const subjects = Array.from(new Set(tasks.map(t => t.subject).filter((s): s is string => Boolean(s))));
+  const subjects = React.useMemo(() => Array.from(new Set(tasks.map(t => t.subject).filter((s): s is string => Boolean(s)))), [tasks]);
 
-  let filtered = tasks.filter((t) => {
-    const matchesSearch = t.title.toLowerCase().includes(search.toLowerCase()) || (t.description || '').toLowerCase().includes(search.toLowerCase());
-    const matchesSubject = subjectFilter === 'all' || t.subject === subjectFilter;
-    const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
-    return matchesSearch && matchesSubject && matchesStatus;
-  });
-
-  if (sortBy === 'deadline') {
-    filtered = [...filtered].sort((a, b) => {
-      if (!a.deadline) return 1;
-      if (!b.deadline) return -1;
-      return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+  const filtered = React.useMemo(() => {
+    let result = tasks.filter((t) => {
+      const matchesSearch = t.title.toLowerCase().includes(search.toLowerCase()) || (t.description || '').toLowerCase().includes(search.toLowerCase());
+      const matchesSubject = subjectFilter === 'all' || t.subject === subjectFilter;
+      const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
+      return matchesSearch && matchesSubject && matchesStatus;
     });
-  }
+
+    if (sortBy === 'deadline') {
+      result = [...result].sort((a, b) => {
+        if (!a.deadline) return 1;
+        if (!b.deadline) return -1;
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+      });
+    }
+
+    return result;
+  }, [tasks, search, subjectFilter, statusFilter, sortBy]);
 
   return (
     <main className="min-h-screen">

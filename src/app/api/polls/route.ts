@@ -7,8 +7,9 @@ export async function GET() {
     const supabase = await createClientSupabase();
     const { data, error } = await supabase
       .from('polls')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('id, title, description, is_active, starts_at, ends_at, created_by, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
 
     if (error) throw error;
     return NextResponse.json(data ?? []);
@@ -19,12 +20,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const authResult = await requireRole(['admin', 'main_admin'])(request);
-    if (authResult instanceof Response) return authResult;
-
     const user = await getAuthenticatedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (user.role !== 'admin' && user.role !== 'main_admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const supabase = await createClientSupabase();

@@ -34,7 +34,7 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
   const tier = React.useMemo(() => getDeviceTier(), []);
   const count = particleCount ?? tier.particleCount;
   const parallaxEnabled = enableParallax ?? tier.enableParallax;
-  const { smoothX, smoothY } = useMousePosition({ smooth: true, smoothFactor: 0.04 });
+  const { smoothX, smoothY } = useMousePosition({ smooth: true, smoothFactor: 0.04, enabled: parallaxEnabled });
   const [reducedMotion, setReducedMotion] = React.useState(tier.reducedMotion);
 
   React.useEffect(() => {
@@ -51,10 +51,10 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
     const depthMap: Record<'far' | 'mid' | 'near', number> = { far: 0.15, mid: 0.4, near: 0.75 };
     const countPerLayer = Math.floor(count / 3);
 
-    layers.forEach((layer) => {
+    layers.forEach((layer, layerIndex) => {
       for (let i = 0; i < countPerLayer; i++) {
         result.push({
-          id: Math.random(),
+          id: layerIndex * 10000 + i,
           left: `${Math.random() * 100}%`,
           top: `${Math.random() * 100}%`,
           size: layer === 'far' ? Math.random() * 1.2 + 0.4 : layer === 'mid' ? Math.random() * 1.8 + 0.8 : Math.random() * 2.4 + 1.2,
@@ -105,10 +105,8 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
 
   return (
     <div className={`fixed inset-0 pointer-events-none overflow-hidden ${className}`}>
-      {/* Deep space gradient background */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#03040a] via-[#070b18] to-[#0a0a1a]" />
 
-      {/* Subtle nebula gradients */}
       <div className="absolute inset-0" style={getParallaxStyle(0.25)}>
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-purple-900/10 via-transparent to-transparent" />
         <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-bl from-blue-900/8 via-transparent to-transparent" />
@@ -122,7 +120,6 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
         )}
       </div>
 
-      {/* Far stars */}
       <div className="absolute inset-0" style={getParallaxStyle(0.15)}>
         {stars.filter(s => s.layer === 'far').map((star) => (
           <div
@@ -141,7 +138,6 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
         ))}
       </div>
 
-      {/* Mid stars */}
       <div className="absolute inset-0" style={getParallaxStyle(0.4)}>
         {stars.filter(s => s.layer === 'mid').map((star) => (
           <div
@@ -160,7 +156,6 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
         ))}
       </div>
 
-      {/* Cosmic dust / floating particles */}
       <div className="absolute inset-0" style={getParallaxStyle(0.6)}>
         {cosmicDust.map((dust) => (
           <div
@@ -178,7 +173,6 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
         ))}
       </div>
 
-      {/* Shooting stars */}
       {!reducedMotion && (
         <div className="absolute inset-0 overflow-hidden" style={getParallaxStyle(0.9)}>
           {shootingStars.map((star) => (
@@ -197,7 +191,6 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
         </div>
       )}
 
-      {/* Near stars */}
       <div className="absolute inset-0" style={getParallaxStyle(0.75)}>
         {stars.filter(s => s.layer === 'near').map((star) => (
           <div
@@ -216,7 +209,6 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
         ))}
       </div>
 
-      {/* Foreground particles */}
       {!reducedMotion && parallaxEnabled && (
         <div className="absolute inset-0" style={getParallaxStyle(1)}>
           {[...Array(6)].map((_, i) => (
@@ -234,7 +226,6 @@ function SpaceBackground({ className = '', particleCount, enableParallax }: Spac
         </div>
       )}
 
-      {/* Subtle radial glow */}
       {tier.enableGlow && (
         <div className="absolute inset-0" style={getParallaxStyle(0.3)}>
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-500/3 rounded-full blur-[120px]" />

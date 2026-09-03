@@ -34,7 +34,8 @@ export default function MessagesPage() {
           .from('private_messages')
           .select('sender_id, receiver_id, message, created_at')
           .or(`sender_id.eq.${profile?.id},receiver_id.eq.${profile?.id}`)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .limit(100);
 
         if (!data) {
           setConversations([]);
@@ -42,22 +43,32 @@ export default function MessagesPage() {
         }
 
         const convMap = new Map<string, { id: string; name: string; lastMessage: string; time: string }>();
+        const otherIds = new Set<string>();
 
-        for (const msg of data) {
+        for (const msg of data as Array<{ sender_id: string; receiver_id: string; message: string; created_at: string }>) {
           const otherId = msg.sender_id === profile?.id ? msg.receiver_id : msg.sender_id;
           if (!convMap.has(otherId)) {
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('name')
-              .eq('id', otherId)
-              .single();
-
             convMap.set(otherId, {
               id: otherId,
-              name: profileData?.name ?? 'Unknown',
+              name: '',
               lastMessage: msg.message,
               time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             });
+            otherIds.add(otherId);
+          }
+        }
+
+        if (otherIds.size > 0) {
+          const { data: profilesData } = await supabase
+            .from('profiles')
+            .select('id, name')
+            .in('id', Array.from(otherIds));
+
+          if (profilesData) {
+            const profileMap = new Map((profilesData as Array<{ id: string; name: string }>).map((p) => [p.id, p.name]));
+            for (const [id, conv] of convMap) {
+              conv.name = profileMap.get(id) ?? 'Unknown';
+            }
           }
         }
 

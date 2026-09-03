@@ -32,8 +32,9 @@ export default function SchedulePage() {
       try {
         const { data } = await supabase
           .from('schedule')
-          .select('*')
-          .order('day', { ascending: true });
+          .select('id, day, time_start, time_end, subject, teacher, room')
+          .order('day', { ascending: true })
+          .order('time_start', { ascending: true });
         setItems(data ?? []);
       } catch (error) {
         console.error('[Schedule Error]', error);

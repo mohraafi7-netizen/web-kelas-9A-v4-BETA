@@ -42,9 +42,9 @@ import {
   Shield,
   Crown,
   Rocket,
-  Clock,
   Target,
   Zap,
+  Clock,
 } from 'lucide-react';
 
 const fadeIn = {
@@ -77,6 +77,25 @@ const latestAnnouncements = [
   { title: 'New Project Showcase', date: '2 weeks ago', category: 'Project' },
 ];
 
+function HeroClock() {
+  const [time, setTime] = React.useState(new Date());
+
+  React.useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = () => time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const formatDate = () => time.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  return (
+    <>
+      <span className="font-mono">{formatTime()}</span>
+      <span>{formatDate()}</span>
+    </>
+  );
+}
+
 function HeroSection() {
   const { smoothX, smoothY } = useMousePosition({ smooth: true, smoothFactor: 0.03 });
   const { profile } = useAuth();
@@ -107,30 +126,6 @@ function HeroSection() {
       );
     }
     return null;
-  };
-
-  const [time, setTime] = React.useState(new Date());
-
-  React.useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const formatDate = () => {
-    return time.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const formatTime = () => {
-    return time.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
   };
 
   return (
@@ -213,11 +208,11 @@ function HeroSection() {
               <motion.div variants={fadeIn} className="mt-8 flex items-center justify-center lg:justify-start gap-6 text-sm text-slate-400">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-galaxy-400" />
-                  <span className="font-mono">{formatTime()}</span>
+                  <HeroClock />
                 </div>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-galaxy-400" />
-                  <span>{formatDate()}</span>
+                  <HeroClock />
                 </div>
               </motion.div>
             )}
@@ -253,7 +248,7 @@ function StatsSection() {
 
     const fetchStats = async () => {
       const [membersRes, tasksRes, announcementsRes, dutyRes] = await Promise.all([
-         supabase.from('profiles').select('*', { count: 'exact', head: true }),
+        supabase.from('profiles').select('*', { count: 'exact', head: true }),
         supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('status', 'active'),
         supabase.from('announcements').select('*', { count: 'exact', head: true }),
         supabase.from('piket').select('*', { count: 'exact', head: true }),
@@ -271,10 +266,14 @@ function StatsSection() {
 
     const channel = supabase
       .channel('dashboard-stats')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchStats)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchStats)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, fetchStats)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'piket' }, fetchStats)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'profiles' }, fetchStats)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, fetchStats)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, fetchStats)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, fetchStats)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, fetchStats)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'announcements' }, fetchStats)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'piket' }, fetchStats)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'piket' }, fetchStats)
       .subscribe();
 
     return () => {
@@ -327,15 +326,15 @@ function TodaysMission() {
       const today = new Date().toISOString().split('T')[0];
 
       const [tasksRes, dutyRes, announcementsRes] = await Promise.all([
-        supabase.from('tasks').select('*').eq('status', 'active').order('deadline', { ascending: true }).limit(3),
-        supabase.from('piket').select('*').eq('date', today).limit(1),
-        supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(2),
+        supabase.from('tasks').select('id, title, deadline').eq('status', 'active').order('deadline', { ascending: true }).limit(3),
+        supabase.from('piket').select('id, student_name').eq('date', today).limit(1),
+        supabase.from('announcements').select('id, title').order('created_at', { ascending: false }).limit(2),
       ]);
 
       const missionItems: Array<{ id: string; title: string; type: 'task' | 'duty' | 'announcement'; time?: string }> = [];
 
       if (tasksRes.data) {
-        tasksRes.data.forEach((task) => {
+        (tasksRes.data as Array<{ id: string; title: string; deadline?: string }>).forEach((task) => {
           missionItems.push({
             id: task.id,
             title: task.title,
@@ -354,7 +353,7 @@ function TodaysMission() {
       }
 
       if (announcementsRes.data) {
-        announcementsRes.data.forEach((ann) => {
+        (announcementsRes.data as Array<{ id: string; title: string }>).forEach((ann) => {
           missionItems.push({
             id: ann.id,
             title: ann.title,
@@ -370,9 +369,11 @@ function TodaysMission() {
 
     const channel = supabase
       .channel('dashboard-missions')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchMissions)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'piket' }, fetchMissions)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, fetchMissions)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, fetchMissions)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, fetchMissions)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'piket' }, fetchMissions)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, fetchMissions)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'announcements' }, fetchMissions)
       .subscribe();
 
     return () => {
@@ -444,7 +445,7 @@ function TodaysMission() {
 export default function DashboardPage() {
   return (
     <main className="min-h-screen pb-16 md:pb-0">
-      <SpaceBackground particleCount={60} enableParallax={true} />
+      <SpaceBackground particleCount={40} enableParallax={true} />
 
       <HeroSection />
 

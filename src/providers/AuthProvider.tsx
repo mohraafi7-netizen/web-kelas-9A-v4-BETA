@@ -116,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event: string, session: { user: import('@supabase/supabase-js').User | null } | null) => {
       if (!mounted) return;
 
       const currentUser = session?.user ?? null;
@@ -143,7 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             table: 'profiles',
             filter: `id=eq.${currentUser.id}`,
           },
-          (payload) => {
+          (payload: { new: Profile }) => {
             if (mounted) {
               setProfile(payload.new as Profile);
             }
