@@ -47,7 +47,7 @@ function getTodayKey() {
   return days[new Date().getDay()];
 }
 
-function DutyCard({ piket, isToday, onDelete, canEdit, members }: { piket: Piket; isToday: boolean; onDelete: (id: string) => void; canEdit: boolean; members: Member[] }) {
+function DutyCard({ piket, isToday, onDelete, canEdit, members, deletingId }: { piket: Piket; isToday: boolean; onDelete: (id: string) => void; canEdit: boolean; members: Member[]; deletingId?: string | null }) {
   const member = members.find(m => m.name === piket.student_name);
 
   return (
@@ -65,7 +65,8 @@ function DutyCard({ piket, isToday, onDelete, canEdit, members }: { piket: Piket
         {canEdit && (
           <button
             onClick={() => onDelete(piket.id)}
-            className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+            disabled={deletingId === piket.id}
+            className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Remove from schedule"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -82,6 +83,8 @@ export default function DutyPage() {
   const [piketList, setPiketList] = React.useState<Piket[]>([]);
   const [members, setMembers] = React.useState<Member[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [deletingPiketId, setDeletingPiketId] = React.useState<string | null>(null);
   const [showCreate, setShowCreate] = React.useState(false);
   const [form, setForm] = React.useState({ date: '', day: 'Monday', student_name: '', task: '' });
 
@@ -91,9 +94,10 @@ export default function DutyPage() {
   const fetchPiket = React.useCallback(async () => {
     try {
       const supabase = createClientSupabaseBrowser();
-      const { data } = await supabase.from('piket').select('*').order('date', { ascending: true });
+      const { data } = await supabase.from('piket').select('id, date, day, student_name, task, created_by, created_at, updated_at').order('date', { ascending: true });
       if (data) setPiketList(data as Piket[]);
     } catch (error) {
+      console.error('[PIKET FETCH ERROR]', error);
       showToast('error', 'Failed to load piket');
     } finally {
       setLoading(false);
@@ -105,8 +109,8 @@ export default function DutyPage() {
       const supabase = createClientSupabaseBrowser();
       const { data } = await supabase.from('profiles').select('id, name, photo_url, role, created_at');
       if (data) setMembers(data as Member[]);
-    } catch {
-      // silent
+    } catch (error) {
+      console.error('[MEMBERS FETCH ERROR]', error);
     }
   }, []);
 
@@ -120,7 +124,13 @@ export default function DutyPage() {
     const supabase = createClientSupabaseBrowser();
     const channel = supabase
       .channel('piket-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'piket' }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'piket' }, () => {
+        fetchPiket();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'piket' }, () => {
+        fetchPiket();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'piket' }, () => {
         fetchPiket();
       })
       .subscribe();
@@ -132,35 +142,67 @@ export default function DutyPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.date || !form.student_name.trim() || !form.task.trim()) return;
+    if (submitting) return;
+    if (!form.date || !form.student_name.trim() || !form.task.trim()) {
+      showToast('error', 'Date, student name, and task are required');
+      return;
+    }
 
-    const supabase = createClientSupabaseBrowser();
-    const { error } = await supabase.from('piket').insert({
-      date: form.date,
-      day: form.day,
-      student_name: form.student_name,
-      task: form.task,
-    });
+    setSubmitting(true);
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const { error } = await supabase.from('piket').insert({
+        date: form.date,
+        day: form.day,
+        student_name: form.student_name.trim(),
+        task: form.task.trim(),
+      });
 
-    if (error) {
+      if (error) {
+        console.error('[PIKET INSERT ERROR]', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        showToast('error', 'Failed to create piket');
+      } else {
+        showToast('success', 'Piket created successfully');
+        setForm({ date: '', day: 'Monday', student_name: '', task: '' });
+        setShowCreate(false);
+        fetchPiket();
+      }
+    } catch (err) {
+      console.error('[PIKET INSERT EXCEPTION]', err);
       showToast('error', 'Failed to create piket');
-    } else {
-      showToast('success', 'Piket created successfully');
-      setForm({ date: '', day: 'Monday', student_name: '', task: '' });
-      setShowCreate(false);
-      fetchPiket();
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    const supabase = createClientSupabaseBrowser();
-    const { error } = await supabase.from('piket').delete().eq('id', id);
-
-    if (error) {
+    if (!confirm('Delete this duty assignment?')) return;
+    setDeletingPiketId(id);
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const { error } = await supabase.from('piket').delete().eq('id', id);
+      if (error) {
+        console.error('[PIKET DELETE ERROR]', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        showToast('error', 'Failed to delete piket');
+      } else {
+        showToast('success', 'Piket deleted');
+        fetchPiket();
+      }
+    } catch (err) {
+      console.error('[PIKET DELETE EXCEPTION]', err);
       showToast('error', 'Failed to delete piket');
-    } else {
-      showToast('success', 'Piket deleted');
-      fetchPiket();
+    } finally {
+      setDeletingPiketId(null);
     }
   };
 
@@ -179,7 +221,7 @@ export default function DutyPage() {
         <div className="relative">
           <GalaxyGlow size="lg" color="blue" className="top-0 left-0 opacity-20" />
 
-          {todayPiket && todayPiket && (
+          {todayPiket && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -194,9 +236,9 @@ export default function DutyPage() {
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {piketList.filter(p => p.day === todayKey).map((p) => (
-                    <DutyCard key={p.id} piket={p} isToday={true} onDelete={handleDelete} canEdit={canEdit} members={members} />
-                  ))}
+                    {piketList.filter(p => p.day === todayKey).map((p) => (
+                      <DutyCard key={p.id} piket={p} isToday={true} onDelete={handleDelete} canEdit={canEdit} members={members} deletingId={deletingPiketId} />
+                    ))}
                 </div>
               </GlassCard>
             </motion.div>
@@ -264,8 +306,8 @@ export default function DutyPage() {
                       required
                     />
                   </div>
-                  <GalaxyButton type="submit" icon={<CheckCircle className="w-4 h-4" />}>
-                    Add Duty
+                  <GalaxyButton type="submit" icon={<CheckCircle className="w-4 h-4" />} disabled={submitting}>
+                    {submitting ? 'Adding...' : 'Add Duty'}
                   </GalaxyButton>
                 </form>
               </GlassCard>
@@ -313,6 +355,7 @@ export default function DutyPage() {
                           onDelete={handleDelete}
                           canEdit={canEdit}
                           members={members}
+                          deletingId={deletingPiketId}
                         />
                       ))}
                     </div>

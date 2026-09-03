@@ -25,10 +25,13 @@ function AdminPollsClient() {
   const [options, setOptions] = React.useState<string[]>(['', '']);
   const [results, setResults] = React.useState<Record<string, { options: (PollOption & { votes: number })[], totalVotes: number }>>({});
   const [loadingResults, setLoadingResults] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [togglingId, setTogglingId] = React.useState<string | null>(null);
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'main_admin';
 
-  const fetchPolls = async () => {
+  const fetchPolls = React.useCallback(async () => {
     setLoading(true);
     try {
       const supabase = createClientSupabaseBrowser();
@@ -40,7 +43,7 @@ function AdminPollsClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast]);
 
   const fetchResults = async (pollId: string) => {
     setLoadingResults(pollId);
@@ -59,7 +62,24 @@ function AdminPollsClient() {
 
   React.useEffect(() => {
     fetchPolls();
-  }, []);
+    const supabase = createClientSupabaseBrowser();
+    const channel = supabase
+      .channel('admin-polls-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'polls' }, () => {
+        fetchPolls();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'polls' }, () => {
+        fetchPolls();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'polls' }, () => {
+        fetchPolls();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchPolls]);
 
   const openAddModal = () => {
     setEditingPoll(null);
@@ -82,10 +102,13 @@ function AdminPollsClient() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     const supabase = createClientSupabaseBrowser();
     const validOptions = options.filter((o) => o.trim() !== '');
     if (validOptions.length < 2) {
       showToast('error', 'Minimal 2 pilihan jawaban');
+      setSubmitting(false);
       return;
     }
 
@@ -93,11 +116,19 @@ function AdminPollsClient() {
       let pollId = editingPoll?.id;
       if (editingPoll) {
         const { error } = await supabase.from('polls').update(formData).eq('id', editingPoll.id);
-        if (error) throw error;
+        if (error) {
+          console.error('[POLL UPDATE ERROR]', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+          });
+          throw error;
+        }
       } else {
         const { data, error } = await supabase.from('polls').insert(formData).select().single();
         if (error) {
-          console.error('[POLL SAVE ERROR]', {
+          console.error('[POLL INSERT ERROR]', {
             message: error.message,
             code: error.code,
             details: error.details,
@@ -112,7 +143,7 @@ function AdminPollsClient() {
         const inserts = validOptions.map((text) => ({ poll_id: pollId, option_text: text }));
         const { error: optError } = await supabase.from('poll_options').insert(inserts);
         if (optError) {
-          console.error('[POLL OPTION SAVE ERROR]', {
+          console.error('[POLL OPTION INSERT ERROR]', {
             message: optError.message,
             code: optError.code,
             details: optError.details,
@@ -134,30 +165,60 @@ function AdminPollsClient() {
         hint: (err as any)?.hint,
       });
       showToast('error', `Gagal menyimpan polling: ${error.message}`);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Hapus polling ini?')) return;
-    const supabase = createClientSupabaseBrowser();
-    const { error } = await supabase.from('polls').delete().eq('id', id);
-    if (error) {
-      showToast('error', error.message);
-      return;
+    setDeletingId(id);
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const { error } = await supabase.from('polls').delete().eq('id', id);
+      if (error) {
+        console.error('[POLL DELETE ERROR]', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        showToast('error', 'Gagal menghapus polling');
+      } else {
+        showToast('success', 'Polling berhasil dihapus');
+        fetchPolls();
+      }
+    } catch (err) {
+      console.error('[POLL DELETE EXCEPTION]', err);
+      showToast('error', 'Gagal menghapus polling');
+    } finally {
+      setDeletingId(null);
     }
-    showToast('success', 'Polling berhasil dihapus');
-    fetchPolls();
   };
 
   const handleToggleActive = async (poll: Poll) => {
-    const supabase = createClientSupabaseBrowser();
-    const { error } = await supabase.from('polls').update({ is_active: !poll.is_active }).eq('id', poll.id);
-    if (error) {
-      showToast('error', error.message);
-      return;
+    setTogglingId(poll.id);
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const { error } = await supabase.from('polls').update({ is_active: !poll.is_active }).eq('id', poll.id);
+      if (error) {
+        console.error('[POLL TOGGLE ERROR]', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        showToast('error', 'Gagal mengubah status polling');
+      } else {
+        showToast('success', poll.is_active ? 'Polling dinonaktifkan' : 'Polling diaktifkan');
+        fetchPolls();
+      }
+    } catch (err) {
+      console.error('[POLL TOGGLE EXCEPTION]', err);
+      showToast('error', 'Gagal mengubah status polling');
+    } finally {
+      setTogglingId(null);
     }
-    showToast('success', poll.is_active ? 'Polling dinonaktifkan' : 'Polling diaktifkan');
-    fetchPolls();
   };
 
   const addOptionField = () => {
@@ -215,13 +276,13 @@ function AdminPollsClient() {
                   </div>
                   {isAdmin && (
                     <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleToggleActive(poll)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleToggleActive(poll)} disabled={togglingId === poll.id}>
                         {poll.is_active ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => openEditModal(poll)}>
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(poll.id)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(poll.id)} disabled={deletingId === poll.id}>
                         <Trash2 className="w-4 h-4 text-red-400" />
                       </Button>
                     </div>
@@ -336,10 +397,10 @@ function AdminPollsClient() {
             />
             <label htmlFor="is_active" className="text-sm text-slate-300">Aktifkan polling</label>
           </div>
-          <div className="flex gap-3 pt-4">
-            <Button type="submit" className="flex-1">{editingPoll ? 'Update' : 'Buat'}</Button>
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="flex-1">Batal</Button>
-          </div>
+            <div className="flex gap-3 pt-4">
+              <Button type="submit" className="flex-1" disabled={submitting}>{submitting ? 'Menyimpan...' : editingPoll ? 'Update' : 'Buat'}</Button>
+              <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="flex-1">Batal</Button>
+            </div>
         </form>
       </Modal>
     </div>

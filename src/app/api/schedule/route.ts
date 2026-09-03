@@ -14,40 +14,61 @@ export async function GET() {
     if (error) throw error;
     return NextResponse.json(data ?? []);
   } catch (error) {
+    console.error('[SCHEDULE GET ERROR]', error);
     return NextResponse.json({ error: 'Failed to fetch schedule' }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  if (user.role !== 'admin' && user.role !== 'main_admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (user.role !== 'admin' && user.role !== 'main_admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const supabase = await createClientSupabase();
     const body = await request.json();
+
+    const day = typeof body.day === 'string' ? body.day.trim() : '';
+    const time_start = typeof body.time_start === 'string' ? body.time_start.trim() : '';
+    const time_end = typeof body.time_end === 'string' ? body.time_end.trim() : '';
+    const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
+    const teacher = typeof body.teacher === 'string' ? body.teacher.trim() : '';
+    const room = typeof body.room === 'string' ? body.room.trim() : '';
+
+    if (!day || !time_start || !time_end || !subject) {
+      return NextResponse.json({ error: 'Day, time_start, time_end, and subject are required' }, { status: 400 });
+    }
 
     const { data, error } = await supabase
       .from('schedule')
       .insert({
-        day: body.day,
-        time_start: body.time_start,
-        time_end: body.time_end,
-        subject: body.subject,
-        teacher: body.teacher,
-        room: body.room,
+        day,
+        time_start,
+        time_end,
+        subject,
+        teacher,
+        room,
       })
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('[SCHEDULE POST ERROR]', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
+      throw error;
+    }
     return NextResponse.json(data);
   } catch (error) {
+    console.error('[SCHEDULE POST EXCEPTION]', error);
     return NextResponse.json({ error: 'Failed to create schedule' }, { status: 500 });
   }
 }

@@ -19,14 +19,16 @@ function AdminAnnouncementsClient() {
   const [announcements, setAnnouncements] = React.useState<Announcement[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingItem, setEditingItem] = React.useState<Announcement | null>(null);
   const [formData, setFormData] = React.useState({ title: '', content: '', author: '' });
   const [attachments, setAttachments] = React.useState<AnnouncementAttachment[]>([]);
   const [uploading, setUploading] = React.useState(false);
   const [pendingFiles, setPendingFiles] = React.useState<File[]>([]);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -39,25 +41,65 @@ function AdminAnnouncementsClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   React.useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
+
+  React.useEffect(() => {
+    const supabase = createClientSupabaseBrowser();
+    const channel = supabase
+      .channel('admin-announcements-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'announcements' }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClientSupabaseBrowser();
+    if (submitting) return;
+
+    const title = formData.title.trim();
+    if (!title) {
+      showToast('error', 'Title is required');
+      return;
+    }
+
+    setSubmitting(true);
     try {
+      const supabase = createClientSupabaseBrowser();
       const { data: { user } } = await supabase.auth.getUser();
       const uploadedBy = user?.id || null;
 
       let announcementId = editingItem?.id;
       if (editingItem) {
-        await supabase.from('announcements').update(formData).eq('id', editingItem.id);
+        const { error } = await supabase.from('announcements').update({
+          title,
+          content: formData.content.trim(),
+        }).eq('id', editingItem.id);
+        if (error) {
+          console.error('[ANNOUNCEMENT UPDATE ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
+          throw error;
+        }
       } else {
-        const { data, error } = await supabase.from('announcements').insert([formData]).select().single();
-        if (error) throw error;
+        const { data, error } = await supabase.from('announcements').insert([{
+          title,
+          content: formData.content.trim(),
+          author: user?.email || '',
+        }]).select().single();
+        if (error) {
+          console.error('[ANNOUNCEMENT INSERT ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
+          throw error;
+        }
         announcementId = data.id;
       }
 
@@ -96,6 +138,7 @@ function AdminAnnouncementsClient() {
       showToast('error', err instanceof Error ? err.message : 'Failed to save announcement');
     } finally {
       setUploading(false);
+      setSubmitting(false);
     }
   };
 
@@ -108,10 +151,23 @@ function AdminAnnouncementsClient() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this announcement?')) return;
-    const supabase = createClientSupabaseBrowser();
-    await supabase.from('announcements').delete().eq('id', id);
-    showToast('success', 'Announcement deleted');
-    fetchData();
+    setDeletingId(id);
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const { error } = await supabase.from('announcements').delete().eq('id', id);
+      if (error) {
+        console.error('[ANNOUNCEMENT DELETE ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
+        showToast('error', 'Failed to delete announcement');
+      } else {
+        showToast('success', 'Announcement deleted');
+        fetchData();
+      }
+    } catch (err) {
+      console.error('[ANNOUNCEMENT DELETE EXCEPTION]', err);
+      showToast('error', 'Failed to delete announcement');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const openAddModal = () => {
@@ -178,7 +234,7 @@ function AdminAnnouncementsClient() {
                   <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
                     <Pencil className="w-4 h-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)} disabled={deletingId === item.id}>
                     <Trash2 className="w-4 h-4 text-red-400" />
                   </Button>
                 </div>
@@ -246,10 +302,10 @@ function AdminAnnouncementsClient() {
             )}
           </div>
           <div className="flex gap-3 pt-4">
-            <Button type="submit" className="flex-1" disabled={uploading}>
-              {uploading ? 'Saving...' : editingItem ? 'Update' : 'Create'}
+            <Button type="submit" className="flex-1" disabled={submitting || uploading}>
+              {submitting || uploading ? 'Saving...' : editingItem ? 'Update' : 'Create'}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="flex-1">
+            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="flex-1" disabled={submitting || uploading}>
               Cancel
             </Button>
           </div>

@@ -19,6 +19,7 @@ function AdminProjectsClient() {
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingItem, setEditingItem] = React.useState<Project | null>(null);
   const [formData, setFormData] = React.useState({ title: '', description: '', image_url: '', link: '', category: '' });
@@ -45,19 +46,64 @@ function AdminProjectsClient() {
     fetchData();
   }, []);
 
+  React.useEffect(() => {
+    const supabase = createClientSupabaseBrowser();
+    const channel = supabase
+      .channel('admin-projects-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'projects' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'projects' }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchData]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClientSupabaseBrowser();
+    if (submitting) return;
+
+    const title = formData.title.trim();
+    if (!title) {
+      showToast('error', 'Title is required');
+      return;
+    }
+
+    setSubmitting(true);
     try {
+      const supabase = createClientSupabaseBrowser();
       const { data: { user } } = await supabase.auth.getUser();
       const uploadedBy = user?.id || null;
 
       let projectId = editingItem?.id;
       if (editingItem) {
-        await supabase.from('projects').update(formData).eq('id', editingItem.id);
+        const { error } = await supabase.from('projects').update({
+          title,
+          description: formData.description.trim(),
+          category: formData.category.trim() || null,
+          image_url: formData.image_url.trim() || null,
+          link: formData.link.trim() || null,
+        }).eq('id', editingItem.id);
+        if (error) {
+          console.error('[PROJECT UPDATE ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
+          throw error;
+        }
       } else {
-        const { data, error } = await supabase.from('projects').insert([formData]).select().single();
-        if (error) throw error;
+        const { data, error } = await supabase.from('projects').insert([{
+          title,
+          description: formData.description.trim(),
+          category: formData.category.trim() || null,
+          image_url: formData.image_url.trim() || null,
+          link: formData.link.trim() || null,
+        }]).select().single();
+        if (error) {
+          console.error('[PROJECT INSERT ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
+          throw error;
+        }
         projectId = data.id;
       }
 
@@ -96,6 +142,7 @@ function AdminProjectsClient() {
       showToast('error', err instanceof Error ? err.message : 'Failed to save project');
     } finally {
       setUploading(false);
+      setSubmitting(false);
     }
   };
 
@@ -108,10 +155,20 @@ function AdminProjectsClient() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this project?')) return;
-    const supabase = createClientSupabaseBrowser();
-    await supabase.from('projects').delete().eq('id', id);
-    showToast('success', 'Project deleted');
-    fetchData();
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const { error } = await supabase.from('projects').delete().eq('id', id);
+      if (error) {
+        console.error('[PROJECT DELETE ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
+        showToast('error', 'Failed to delete project');
+      } else {
+        showToast('success', 'Project deleted');
+        fetchData();
+      }
+    } catch (err) {
+      console.error('[PROJECT DELETE EXCEPTION]', err);
+      showToast('error', 'Failed to delete project');
+    }
   };
 
   const openAddModal = () => {
@@ -264,10 +321,10 @@ function AdminProjectsClient() {
             )}
           </div>
           <div className="flex gap-3 pt-4">
-            <Button type="submit" className="flex-1" disabled={uploading}>
-              {uploading ? 'Saving...' : editingItem ? 'Update' : 'Create'}
+            <Button type="submit" className="flex-1" disabled={submitting || uploading}>
+              {submitting || uploading ? 'Saving...' : editingItem ? 'Update' : 'Create'}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="flex-1">
+            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="flex-1" disabled={submitting || uploading}>
               Cancel
             </Button>
           </div>

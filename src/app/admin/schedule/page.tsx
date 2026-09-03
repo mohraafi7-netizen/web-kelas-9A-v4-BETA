@@ -20,21 +20,32 @@ const DAYS = [
   { key: 'Friday', label: 'Jumat' },
 ];
 
+type ScheduleItem = {
+  id: string;
+  day: string;
+  time_start: string;
+  time_end: string;
+  subject: string;
+  teacher: string;
+  room: string;
+};
+
 function AdminScheduleClient() {
-  const [items, setItems] = React.useState<Array<{ id: string; day: string; time_start: string; time_end: string; subject: string; teacher: string; room: string }>>([]);
+  const [items, setItems] = React.useState<ScheduleItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
-  const [editingItem, setEditingItem] = React.useState<any>(null);
+  const [editingItem, setEditingItem] = React.useState<ScheduleItem | null>(null);
   const [formData, setFormData] = React.useState({ day: 'Monday', time_start: '', time_end: '', subject: '', teacher: '', room: '' });
   const { showToast } = useToast();
 
-  const fetchData = async () => {
+  const fetchData = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const supabase = createClientSupabaseBrowser();
-      const { data, error } = await supabase.from('schedule').select('*').order('day', { ascending: true }).order('time_start', { ascending: true });
+      const { data, error } = await supabase.from('schedule').select('id, day, time_start, time_end, subject, teacher, room').order('day', { ascending: true }).order('time_start', { ascending: true });
       if (error) throw error;
       setItems(data ?? []);
     } catch (err) {
@@ -42,35 +53,89 @@ function AdminScheduleClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   React.useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
+
+  React.useEffect(() => {
+    const supabase = createClientSupabaseBrowser();
+    const channel = supabase
+      .channel('admin-schedule-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'schedule' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'schedule' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'schedule' }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClientSupabaseBrowser();
+    if (submitting) return;
+
+    const day = formData.day.trim();
+    const time_start = formData.time_start.trim();
+    const time_end = formData.time_end.trim();
+    const subject = formData.subject.trim();
+
+    if (!day || !time_start || !time_end || !subject) {
+      showToast('error', 'Day, start time, end time, and subject are required');
+      return;
+    }
+
+    setSubmitting(true);
     try {
+      const supabase = createClientSupabaseBrowser();
       if (editingItem) {
-        const { error } = await supabase.from('schedule').update(formData).eq('id', editingItem.id);
-        if (error) throw error;
+        const { error } = await supabase.from('schedule').update({
+          day,
+          time_start,
+          time_end,
+          subject,
+          teacher: formData.teacher.trim(),
+          room: formData.room.trim(),
+        }).eq('id', editingItem.id);
+        if (error) {
+          console.error('[SCHEDULE UPDATE ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
+          throw error;
+        }
         showToast('success', 'Schedule updated');
       } else {
-        const { error } = await supabase.from('schedule').insert([formData]);
-        if (error) throw error;
+        const { error } = await supabase.from('schedule').insert([{
+          day,
+          time_start,
+          time_end,
+          subject,
+          teacher: formData.teacher.trim(),
+          room: formData.room.trim(),
+        }]);
+        if (error) {
+          console.error('[SCHEDULE INSERT ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
+          throw error;
+        }
         showToast('success', 'Schedule created');
       }
       setIsModalOpen(false);
       setEditingItem(null);
       setFormData({ day: 'Monday', time_start: '', time_end: '', subject: '', teacher: '', room: '' });
-      fetchData();
     } catch (err) {
       showToast('error', err instanceof Error ? err.message : 'Failed to save schedule');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleEdit = (item: any) => {
+  const handleEdit = (item: ScheduleItem) => {
     setEditingItem(item);
     setFormData({
       day: item.day,
@@ -85,13 +150,18 @@ function AdminScheduleClient() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this schedule item?')) return;
-    const supabase = createClientSupabaseBrowser();
-    const { error } = await supabase.from('schedule').delete().eq('id', id);
-    if (error) {
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const { error } = await supabase.from('schedule').delete().eq('id', id);
+      if (error) {
+        console.error('[SCHEDULE DELETE ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
+        showToast('error', 'Failed to delete');
+      } else {
+        showToast('success', 'Schedule deleted');
+      }
+    } catch (err) {
+      console.error('[SCHEDULE DELETE EXCEPTION]', err);
       showToast('error', 'Failed to delete');
-    } else {
-      showToast('success', 'Schedule deleted');
-      fetchData();
     }
   };
 
@@ -234,8 +304,12 @@ function AdminScheduleClient() {
             />
           </div>
           <div className="flex gap-3 pt-4">
-            <Button type="submit" className="flex-1">{editingItem ? 'Update' : 'Create'}</Button>
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="flex-1">Cancel</Button>
+            <Button type="submit" className="flex-1" disabled={submitting}>
+              {submitting ? 'Saving...' : editingItem ? 'Update' : 'Create'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="flex-1" disabled={submitting}>
+              Cancel
+            </Button>
           </div>
         </form>
       </Modal>

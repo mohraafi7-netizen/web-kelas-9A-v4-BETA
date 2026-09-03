@@ -24,6 +24,8 @@ function AdminGalleryClient() {
   const [formData, setFormData] = React.useState({ title: '', image_url: '', category: '', storage_path: '', file_name: '', file_type: '', file_size: 0 });
   const [preview, setPreview] = React.useState<string | null>(null);
   const [uploading, setUploading] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -42,6 +44,23 @@ function AdminGalleryClient() {
 
   React.useEffect(() => {
     fetchData();
+    const supabase = createClientSupabaseBrowser();
+    const channel = supabase
+      .channel('gallery-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gallery' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'gallery' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'gallery' }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,6 +91,8 @@ function AdminGalleryClient() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     const supabase = createClientSupabaseBrowser();
     try {
       let storagePath = formData.storage_path;
@@ -117,9 +138,11 @@ function AdminGalleryClient() {
       setPreview(null);
       fetchData();
     } catch (err) {
+      console.error('[GALLERY SUBMIT ERROR]', err);
       showToast('error', err instanceof Error ? err.message : 'Failed to save gallery');
     } finally {
       setUploading(false);
+      setSubmitting(false);
     }
   };
 
@@ -140,14 +163,32 @@ function AdminGalleryClient() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this item?')) return;
-    const supabase = createClientSupabaseBrowser();
-    const item = items.find((i) => i.id === id);
-    if (item?.storage_path) {
-      await supabase.storage.from('gallery').remove([item.storage_path]);
+    setDeletingId(id);
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const item = items.find((i) => i.id === id);
+      if (item?.storage_path) {
+        await supabase.storage.from('gallery').remove([item.storage_path]);
+      }
+      const { error } = await supabase.from('gallery').delete().eq('id', id);
+      if (error) {
+        console.error('[GALLERY DELETE ERROR]', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        showToast('error', 'Failed to delete gallery item');
+      } else {
+        showToast('success', 'Gallery item deleted');
+        fetchData();
+      }
+    } catch (err) {
+      console.error('[GALLERY DELETE EXCEPTION]', err);
+      showToast('error', 'Failed to delete gallery item');
+    } finally {
+      setDeletingId(null);
     }
-    await supabase.from('gallery').delete().eq('id', id);
-    showToast('success', 'Gallery item deleted');
-    fetchData();
   };
 
   const openAddModal = () => {
@@ -201,7 +242,7 @@ function AdminGalleryClient() {
                   <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
                     <Pencil className="w-4 h-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)} disabled={deletingId === item.id}>
                     <Trash2 className="w-4 h-4 text-red-400" />
                   </Button>
                 </div>
@@ -255,8 +296,8 @@ function AdminGalleryClient() {
             )}
           </div>
           <div className="flex gap-3 pt-4">
-            <Button type="submit" className="flex-1" disabled={uploading}>
-              {uploading ? 'Uploading...' : editingItem ? 'Update' : 'Upload'}
+            <Button type="submit" className="flex-1" disabled={uploading || submitting}>
+              {uploading ? 'Uploading...' : submitting ? 'Saving...' : editingItem ? 'Update' : 'Upload'}
             </Button>
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="flex-1">
               Cancel

@@ -41,6 +41,7 @@ export default function ChatPage() {
   const { showToast } = useToast();
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [input, setInput] = React.useState('');
+  const [sending, setSending] = React.useState(false);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const processedRef = React.useRef<Set<string>>(new Set());
   const realtimeStatusRef = React.useRef<'connecting' | 'connected' | 'failed'>('connecting');
@@ -142,16 +143,16 @@ export default function ChatPage() {
         .select('id, username, message, created_at')
         .order('created_at', { ascending: true })
         .limit(100)
-          .then((result: { data: Array<{ id: string; username: string; message: string; created_at: string }> | null }) => {
-            if (result.data) {
-              const mapped: ChatMessage[] = result.data.map((msg) => ({
-            id: msg.id,
-            username: msg.username,
-            message: msg.message,
-            time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          }));
-          const currentIds = currentMessageIdsRef.current;
-          const newMessages = mapped.filter((m) => !currentIds.has(m.id));
+        .then((result: { data: Array<{ id: string; username: string; message: string; created_at: string }> | null }) => {
+          if (result.data) {
+            const mapped: ChatMessage[] = result.data.map((msg) => ({
+              id: msg.id,
+              username: msg.username,
+              message: msg.message,
+              time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            }));
+            const currentIds = currentMessageIdsRef.current;
+            const newMessages = mapped.filter((m) => !currentIds.has(m.id));
             if (newMessages.length > 0) {
               setMessages((prev) => {
                 const updated = [...prev, ...newMessages];
@@ -174,7 +175,7 @@ export default function ChatPage() {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !profile) return;
+    if (!input.trim() || !profile || sending) return;
 
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage: ChatMessage = {
@@ -187,22 +188,40 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, optimisticMessage]);
     currentMessageIdsRef.current.add(tempId);
     setInput('');
+    setSending(true);
 
-    const supabase = createClientSupabaseBrowser();
-    const { error } = await supabase.from('chat_messages').insert({
-      user_id: profile.id,
-      username: profile.name,
-      message: optimisticMessage.message,
-    });
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const { error } = await supabase.from('chat_messages').insert({
+        user_id: profile.id,
+        username: profile.name,
+        message: optimisticMessage.message,
+      });
 
-    if (error) {
-      console.error('[CHAT SEND ERROR]', error);
+      if (error) {
+        console.error('[CHAT SEND ERROR]', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        showToast('error', 'Failed to send message');
+        setMessages((prev) => {
+          const filtered = prev.filter((m) => m.id !== tempId);
+          currentMessageIdsRef.current = new Set(filtered.map((m) => m.id));
+          return filtered;
+        });
+      }
+    } catch (err) {
+      console.error('[CHAT SEND EXCEPTION]', err);
       showToast('error', 'Failed to send message');
       setMessages((prev) => {
         const filtered = prev.filter((m) => m.id !== tempId);
         currentMessageIdsRef.current = new Set(filtered.map((m) => m.id));
         return filtered;
       });
+    } finally {
+      setSending(false);
     }
   };
 
@@ -245,8 +264,8 @@ export default function ChatPage() {
                 placeholder="Type a message..."
                 className="flex-1 px-4 py-3 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-galaxy-500"
               />
-              <GalaxyButton type="submit" disabled={!input.trim()} icon={<Send className="w-4 h-4" />}>
-                Send
+              <GalaxyButton type="submit" disabled={!input.trim() || sending} icon={<Send className="w-4 h-4" />}>
+                {sending ? 'Sending...' : 'Send'}
               </GalaxyButton>
             </form>
           </GlassCard>

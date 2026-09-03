@@ -112,7 +112,7 @@ function AttachmentPreview({ attachment, onRemove, canRemove }: { attachment: Ta
   );
 }
 
-function TaskCard({ task, attachments, onComplete, onDelete, canEdit, isCompletedByMe, onRemoveAttachment }: { task: Task; attachments: TaskAttachment[]; onComplete: (id: string) => void; onDelete: (id: string) => void; canEdit: boolean; isCompletedByMe: boolean; onRemoveAttachment?: (taskId: string, attachmentId: string) => void }) {
+function TaskCard({ task, attachments, onComplete, onDelete, canEdit, isCompletedByMe, onRemoveAttachment, completingTaskId, deletingTaskId }: { task: Task; attachments: TaskAttachment[]; onComplete: (id: string) => void; onDelete: (id: string) => void; canEdit: boolean; isCompletedByMe: boolean; onRemoveAttachment?: (taskId: string, attachmentId: string) => void; completingTaskId?: string | null; deletingTaskId?: string | null }) {
   const getStatusBadge = () => {
     switch (task.status) {
       case 'completed':
@@ -204,7 +204,8 @@ function TaskCard({ task, attachments, onComplete, onDelete, canEdit, isComplete
             {!canEdit && task.status === 'active' && (
               <button
                 onClick={() => onComplete(task.id)}
-                className={`p-2 rounded-lg transition-colors ${isCompletedByMe ? 'bg-emerald-500/20 text-emerald-400' : 'hover:bg-emerald-500/10 text-emerald-400'}`}
+                disabled={completingTaskId === task.id}
+                className={`p-2 rounded-lg transition-colors ${isCompletedByMe ? 'bg-emerald-500/20 text-emerald-400' : 'hover:bg-emerald-500/10 text-emerald-400'} disabled:opacity-50 disabled:cursor-not-allowed`}
                 title={isCompletedByMe ? 'Undo complete' : 'Mark as complete'}
               >
                 <CheckCircle className="w-4 h-4" />
@@ -214,14 +215,16 @@ function TaskCard({ task, attachments, onComplete, onDelete, canEdit, isComplete
               <>
                 <button
                   onClick={() => onComplete(task.id)}
-                  className="p-2 rounded-lg hover:bg-emerald-500/10 text-emerald-400 transition-colors"
+                  disabled={completingTaskId === task.id}
+                  className="p-2 rounded-lg hover:bg-emerald-500/10 text-emerald-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Mark as complete"
                 >
                   <CheckCircle className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => onDelete(task.id)}
-                  className="p-2 rounded-lg hover:bg-red-500/10 text-red-400 transition-colors"
+                  disabled={deletingTaskId === task.id}
+                  className="p-2 rounded-lg hover:bg-red-500/10 text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Delete task"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -251,6 +254,9 @@ export default function TasksPage() {
   const [attachmentsMap, setAttachmentsMap] = React.useState<Record<string, TaskAttachment[]>>({});
   const [uploadingTaskId, setUploadingTaskId] = React.useState<string | null>(null);
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [completingTaskId, setCompletingTaskId] = React.useState<string | null>(null);
+  const [deletingTaskId, setDeletingTaskId] = React.useState<string | null>(null);
 
   const canEdit = profile?.role === 'admin' || profile?.role === 'main_admin';
 
@@ -343,8 +349,10 @@ export default function TasksPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (!form.title.trim()) return;
 
+    setSubmitting(true);
     const supabase = createClientSupabaseBrowser();
     let taskId: string | undefined;
 
@@ -361,7 +369,15 @@ export default function TasksPage() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[TASK INSERT ERROR]', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        throw error;
+      }
       taskId = data.id as string;
 
       if (selectedFile && taskId) {
@@ -373,9 +389,10 @@ export default function TasksPage() {
           cacheControl: '3600',
         });
 
-        if (uploadError) throw uploadError;
-
-        const publicUrl = storage.getPublicUrl('task-attachments', path);
+        if (uploadError) {
+          console.error('[TASK ATTACHMENT UPLOAD ERROR]', uploadError);
+          throw uploadError;
+        }
 
         const { error: attachError } = await supabase.from('task_attachments').insert({
           task_id: taskId,
@@ -386,7 +403,15 @@ export default function TasksPage() {
           uploaded_by: profile?.id || null,
         });
 
-        if (attachError) throw attachError;
+        if (attachError) {
+          console.error('[TASK ATTACHMENT INSERT ERROR]', {
+            message: attachError.message,
+            code: attachError.code,
+            details: attachError.details,
+            hint: attachError.hint,
+          });
+          throw attachError;
+        }
 
         setAttachmentsMap((prev) => {
           const key = taskId as string;
@@ -418,6 +443,7 @@ export default function TasksPage() {
       showToast('error', err instanceof Error ? err.message : 'Failed to create task');
     } finally {
       setUploadingTaskId(null);
+      setSubmitting(false);
     }
   };
 
@@ -445,38 +471,72 @@ export default function TasksPage() {
 
   const handleComplete = async (id: string) => {
     if (!profile) return;
+    setCompletingTaskId(id);
     const supabase = createClientSupabaseBrowser();
-    const { data: existing } = await supabase.from('task_completions').select('id').eq('task_id', id).eq('user_id', profile.id).maybeSingle();
 
-    if (existing) {
-      const { error } = await supabase.from('task_completions').delete().eq('id', existing.id);
-      if (error) {
-        showToast('error', 'Failed to undo completion');
+    try {
+      const { data: existing } = await supabase.from('task_completions').select('id').eq('task_id', id).eq('user_id', profile.id).maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase.from('task_completions').delete().eq('id', existing.id);
+        if (error) {
+          console.error('[TASK COMPLETE DELETE ERROR]', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+          });
+          showToast('error', 'Failed to undo completion');
+        } else {
+          showToast('success', 'Completion undone');
+          fetchCompletions();
+        }
       } else {
-        showToast('success', 'Completion undone');
-        fetchCompletions();
+        const { error } = await supabase.from('task_completions').insert({ task_id: id, user_id: profile.id });
+        if (error) {
+          console.error('[TASK COMPLETE INSERT ERROR]', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+          });
+          showToast('error', 'Failed to mark complete');
+        } else {
+          showToast('success', 'Task completed!');
+          fetchCompletions();
+        }
       }
-    } else {
-      const { error } = await supabase.from('task_completions').insert({ task_id: id, user_id: profile.id });
-      if (error) {
-        showToast('error', 'Failed to mark complete');
-      } else {
-        showToast('success', 'Task completed!');
-        fetchCompletions();
-      }
+    } catch (err) {
+      console.error('[TASK COMPLETE EXCEPTION]', err);
+      showToast('error', 'Failed to update completion');
+    } finally {
+      setCompletingTaskId(null);
     }
   };
 
   const handleDelete = async (id: string) => {
-    const supabase = createClientSupabaseBrowser();
-    const { error } = await supabase.from('tasks').delete().eq('id', id);
-
-    if (error) {
+    setDeletingTaskId(id);
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const { error } = await supabase.from('tasks').delete().eq('id', id);
+      if (error) {
+        console.error('[TASK DELETE ERROR]', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        showToast('error', 'Failed to delete task');
+      } else {
+        showToast('success', 'Task deleted');
+        setDeleteId(null);
+        fetchTasks();
+      }
+    } catch (err) {
+      console.error('[TASK DELETE EXCEPTION]', err);
       showToast('error', 'Failed to delete task');
-    } else {
-      showToast('success', 'Task deleted');
-      setDeleteId(null);
-      fetchTasks();
+    } finally {
+      setDeletingTaskId(null);
     }
   };
 
@@ -581,8 +641,8 @@ export default function TasksPage() {
                       </p>
                     )}
                   </div>
-                  <GalaxyButton type="submit" icon={<CheckCircle className="w-4 h-4" />} disabled={uploadingTaskId !== null}>
-                    {uploadingTaskId !== null ? 'Creating...' : 'Create Task'}
+                  <GalaxyButton type="submit" icon={<CheckCircle className="w-4 h-4" />} disabled={submitting || uploadingTaskId !== null}>
+                    {submitting || uploadingTaskId !== null ? 'Saving...' : 'Create Task'}
                   </GalaxyButton>
                 </form>
               </GlassCard>
@@ -658,10 +718,12 @@ export default function TasksPage() {
                   task={task}
                   attachments={attachmentsMap[task.id] || []}
                   onComplete={handleComplete}
-                  onDelete={(id) => setDeleteId(id)}
+                  onDelete={handleDelete}
                   canEdit={canEdit}
                   isCompletedByMe={!!completions[task.id]}
                   onRemoveAttachment={handleRemoveAttachment}
+                  completingTaskId={completingTaskId}
+                  deletingTaskId={deletingTaskId}
                 />
               ))}
             </div>

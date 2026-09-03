@@ -9,6 +9,7 @@ import { Send, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/components/ui';
 
 interface PrivateMessage {
   id: string;
@@ -21,9 +22,11 @@ interface PrivateMessage {
 export default function PrivateChatPage({ params }: { params: Promise<{ userId: string }> }) {
   const { profile } = useAuth();
   const router = useRouter();
+  const { showToast } = useToast();
   const [messages, setMessages] = React.useState<PrivateMessage[]>([]);
   const [input, setInput] = React.useState('');
   const [loading, setLoading] = React.useState(true);
+  const [sending, setSending] = React.useState(false);
   const [otherUserId, setOtherUserId] = React.useState('');
   const [otherUserName, setOtherUserName] = React.useState('');
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
@@ -62,12 +65,16 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
     };
 
     const fetchOtherUser = async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('name')
-        .eq('id', otherUserId)
-        .single();
-      if (data) setOtherUserName(data.name);
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('id', otherUserId)
+          .single();
+        if (data) setOtherUserName(data.name);
+      } catch (error) {
+        console.error('[Private Chat User Fetch Error]', error);
+      }
     };
 
     fetchMessages();
@@ -110,21 +117,55 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !profile || !otherUserId) return;
+    if (!input.trim() || !profile || !otherUserId || sending) return;
 
-    const supabase = createClientSupabaseBrowser();
-    const { error } = await supabase.from('private_messages').insert({
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage: PrivateMessage = {
+      id: tempId,
       sender_id: profile.id,
       receiver_id: otherUserId,
       message: input.trim(),
-    });
+      created_at: new Date().toISOString(),
+    };
 
-    if (error) {
-      console.error('[Private Chat Send Error]', error);
-      return;
-    }
-
+    setMessages((prev) => [...prev, optimisticMessage]);
+    processedRef.current.add(tempId);
     setInput('');
+    setSending(true);
+
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const { error } = await supabase.from('private_messages').insert({
+        sender_id: profile.id,
+        receiver_id: otherUserId,
+        message: optimisticMessage.message,
+      });
+
+      if (error) {
+        console.error('[Private Chat Send Error]', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        showToast('error', 'Failed to send message');
+        setMessages((prev) => {
+          const filtered = prev.filter((m) => m.id !== tempId);
+          processedRef.current = new Set(filtered.map((m) => m.id));
+          return filtered;
+        });
+      }
+    } catch (err) {
+      console.error('[Private Chat Send Exception]', err);
+      showToast('error', 'Failed to send message');
+      setMessages((prev) => {
+        const filtered = prev.filter((m) => m.id !== tempId);
+        processedRef.current = new Set(filtered.map((m) => m.id));
+        return filtered;
+      });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -194,8 +235,8 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
                 placeholder="Type a message..."
                 className="flex-1 px-4 py-3 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-galaxy-500"
               />
-              <GalaxyButton type="submit" disabled={!input.trim()} icon={<Send className="w-4 h-4" />}>
-                Send
+              <GalaxyButton type="submit" disabled={!input.trim() || sending} icon={<Send className="w-4 h-4" />}>
+                {sending ? 'Sending...' : 'Send'}
               </GalaxyButton>
             </form>
           </GlassCard>
