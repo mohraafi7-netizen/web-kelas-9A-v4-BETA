@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui';
 import { ChatReactions } from '@/components/chat/ChatReactions';
 import type { PrivateMessage, Reaction } from '@/types';
+import { isValidUuid, isTemporaryMessage } from '@/lib/utils/uuid';
 
 type PrivateMessageWithMeta = {
   id: string;
@@ -160,6 +161,12 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
 
     try {
       if (editingId) {
+        if (isTemporaryMessage(editingId)) {
+          showToast('error', 'Please wait for the message to save');
+          setSending(false);
+          return;
+        }
+
         const { error } = await supabase
           .from('private_messages')
           .update({ message: input.trim(), edited_at: new Date().toISOString() })
@@ -175,13 +182,14 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
       }
 
       const tempId = `temp-${Date.now()}`;
+      const safeReplyId = replyTo && isValidUuid(replyTo.id) ? replyTo.id : null;
       const optimisticMessage: PrivateMessageWithMeta = {
         id: tempId,
         sender_id: profile.id,
         receiver_id: otherUserId,
         message: input.trim(),
         message_type: 'text',
-        reply_to_id: replyTo?.id || null,
+        reply_to_id: safeReplyId,
         edited_at: null,
         deleted_at: null,
         created_at: new Date().toISOString(),
@@ -194,13 +202,17 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
       setInput('');
       setReplyTo(null);
 
-      const { error } = await supabase.from('private_messages').insert({
-        sender_id: profile.id,
-        receiver_id: otherUserId,
-        message: optimisticMessage.message,
-        message_type: 'text',
-        reply_to_id: replyTo?.id || null,
-      });
+      const { data: inserted, error } = await supabase
+        .from('private_messages')
+        .insert({
+          sender_id: profile.id,
+          receiver_id: otherUserId,
+          message: optimisticMessage.message,
+          message_type: 'text',
+          reply_to_id: safeReplyId,
+        })
+        .select()
+        .single();
 
       if (error) {
         console.error('[Private Chat Send Error]', {
@@ -211,6 +223,13 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
         });
         showToast('error', 'Failed to send message');
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        processedRef.current.delete(tempId);
+        return;
+      }
+
+      if (inserted && isValidUuid(inserted.id)) {
+        processedRef.current.delete(tempId);
+        setMessages((prev) => prev.map((m) => m.id === tempId ? { ...optimisticMessage, ...(inserted as any), id: (inserted as any).id } : m));
       }
     } catch (err) {
       console.error('[Private Chat Send Exception]', err);
@@ -221,6 +240,10 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
   };
 
   const handleDelete = async (id: string) => {
+    if (isTemporaryMessage(id)) {
+      showToast('error', 'Please wait for the message to save before deleting');
+      return;
+    }
     if (!confirm('Delete this message?')) return;
     const supabase = createClientSupabaseBrowser();
     const msg = messages.find((m) => m.id === id);
@@ -246,12 +269,20 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
   };
 
   const handleEdit = (msg: PrivateMessageWithMeta) => {
+    if (isTemporaryMessage(msg.id)) {
+      showToast('error', 'Please wait for the message to save before editing');
+      return;
+    }
     setEditingId(msg.id);
     setInput(msg.message);
     setReplyTo(msg.reply_to ? { id: msg.id, sender_id: msg.sender_id, username: msg.reply_to.username, message: msg.reply_to.message } : null);
   };
 
   const handleToggleReaction = async (messageId: string, emoji: string) => {
+    if (isTemporaryMessage(messageId)) {
+      showToast('error', 'Please wait for the message to save before reacting');
+      return;
+    }
     if (!profile) return;
     const supabase = createClientSupabaseBrowser();
 
@@ -313,6 +344,7 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
                   const isAdmin = profile?.role === 'admin' || profile?.role === 'main_admin';
                   const canDelete = isAdmin || msg.sender_id === profile?.id;
                   const isDeleted = !!msg.deleted_at;
+                  const isPending = isTemporaryMessage(msg.id);
 
                   return (
                     <div key={msg.id} className={`group flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}>
@@ -321,7 +353,7 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
                       </div>
                       <div className={`flex-1 min-w-0 ${isOwn ? 'text-right' : ''}`}>
                         <div className={`inline-block max-w-[85%] ${isOwn ? 'bg-galaxy-600/20 border-galaxy-500/30' : 'bg-white/5 border-white/10'} border rounded-2xl px-4 py-2.5`}>
-                          {msg.reply_to && !isDeleted && (
+                          {msg.reply_to && !isDeleted && !isPending && (
                             <div className="text-xs text-slate-400 mb-1 px-2 py-1 rounded-lg bg-white/5 border border-white/5">
                               <span className="text-slate-300">{msg.reply_to.username}</span>: {msg.reply_to.message}
                             </div>
@@ -337,7 +369,7 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
                             </>
                           )}
                         </div>
-                        {!isDeleted && (
+                        {!isDeleted && !isPending && (
                           <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : ''} opacity-0 group-hover:opacity-100 transition-opacity`}>
                             <button onClick={() => setReplyTo({ id: msg.id, sender_id: msg.sender_id, username: msg.sender_id === profile!.id ? 'You' : otherUserName, message: msg.message })} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-white" title="Reply">
                               <Reply className="w-3 h-3" />
@@ -361,6 +393,9 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
                               <Smile className="w-3 h-3" />
                             </button>
                           </div>
+                        )}
+                        {isPending && (
+                          <span className="text-[10px] text-slate-500 mt-1 block italic">Sending...</span>
                         )}
                         <span className="text-[10px] text-slate-500 mt-1 block">
                           {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

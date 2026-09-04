@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui';
 import { ChatReactions } from '@/components/chat/ChatReactions';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { ChatMessage, Reaction } from '@/types';
+import { isValidUuid, isTemporaryMessage } from '@/lib/utils/uuid';
 
 type MessageWithMeta = {
   id: string;
@@ -284,6 +285,12 @@ type ReplyTo = { id: string; username: string; message: string } | null;
 
     try {
       if (editingId) {
+        if (isTemporaryMessage(editingId)) {
+          showToast('error', 'Please wait for the message to save');
+          setSending(false);
+          return;
+        }
+
         const { error } = await supabase
           .from('chat_messages')
           .update({ message: input.trim(), edited_at: new Date().toISOString() })
@@ -304,7 +311,7 @@ type ReplyTo = { id: string; username: string; message: string } | null;
         username: profile.name,
         message: input.trim(),
         message_type: 'text',
-        reply_to_id: replyTo?.id || null,
+        reply_to_id: replyTo ? (isTemporaryMessage(replyTo.id) ? null : replyTo.id) : null,
         edited_at: null,
         pinned: false,
         deleted_at: null,
@@ -314,17 +321,21 @@ type ReplyTo = { id: string; username: string; message: string } | null;
       };
 
       setMessages((prev) => [...prev, optimisticMessage]);
-      currentMessageIdsRef.current.add(tempId);
+      processedRef.current.add(tempId);
       setInput('');
       setReplyTo(null);
 
-      const { error } = await supabase.from('chat_messages').insert({
-        user_id: profile.id,
-        username: profile.name,
-        message: optimisticMessage.message,
-        message_type: 'text',
-        reply_to_id: replyTo?.id || null,
-      });
+      const { data: inserted, error } = await supabase
+        .from('chat_messages')
+        .insert({
+          user_id: profile.id,
+          username: profile.name,
+          message: optimisticMessage.message,
+          message_type: 'text',
+          reply_to_id: optimisticMessage.reply_to_id,
+        })
+        .select()
+        .single();
 
       if (error) {
         console.error('[CHAT SEND ERROR]', {
@@ -335,6 +346,13 @@ type ReplyTo = { id: string; username: string; message: string } | null;
         });
         showToast('error', 'Failed to send message');
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        processedRef.current.delete(tempId);
+        return;
+      }
+
+      if (inserted && isValidUuid(inserted.id)) {
+        processedRef.current.delete(tempId);
+        setMessages((prev) => prev.map((m) => m.id === tempId ? { ...optimisticMessage, ...(inserted as any), id: (inserted as any).id } : m));
       }
     } catch (err) {
       console.error('[CHAT SEND EXCEPTION]', err);
@@ -345,6 +363,10 @@ type ReplyTo = { id: string; username: string; message: string } | null;
   };
 
   const handleDelete = async (id: string) => {
+    if (isTemporaryMessage(id)) {
+      showToast('error', 'Please wait for the message to save before deleting');
+      return;
+    }
     if (!confirm('Delete this message?')) return;
     const supabase = createClientSupabaseBrowser();
     const msg = messages.find((m) => m.id === id);
@@ -362,6 +384,12 @@ type ReplyTo = { id: string; username: string; message: string } | null;
       .eq('id', id);
 
     if (error) {
+      console.error('[CHAT DELETE ERROR]', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
       showToast('error', 'Failed to delete message');
     } else {
       setMessages((prev) => prev.map((m) => m.id === id ? { ...m, deleted_at: new Date().toISOString() } : m));
@@ -369,18 +397,21 @@ type ReplyTo = { id: string; username: string; message: string } | null;
     }
   };
 
-  const handleReply = (msg: MessageWithMeta) => {
-    setReplyTo({ id: msg.id, username: msg.username, message: msg.message });
-    setEditingId(null);
-  };
-
   const handleEdit = (msg: MessageWithMeta) => {
+    if (isTemporaryMessage(msg.id)) {
+      showToast('error', 'Please wait for the message to save before editing');
+      return;
+    }
     setEditingId(msg.id);
     setInput(msg.message);
     setReplyTo(msg.reply_to ? { ...msg.reply_to, id: msg.id } : null);
   };
 
   const handleToggleReaction = async (messageId: string, emoji: string) => {
+    if (isTemporaryMessage(messageId)) {
+      showToast('error', 'Please wait for the message to save before reacting');
+      return;
+    }
     if (!profile) return;
     const supabase = createClientSupabaseBrowser();
 
@@ -397,6 +428,11 @@ type ReplyTo = { id: string; username: string; message: string } | null;
     } else {
       await supabase.from('reactions').insert({ message_id: messageId, user_id: profile.id, emoji });
     }
+  };
+
+  const handleReply = (msg: MessageWithMeta) => {
+    setReplyTo({ id: msg.id, username: msg.username, message: msg.message });
+    setEditingId(null);
   };
 
   const groupedMessages = React.useMemo<DateGroup[]>(() => {
