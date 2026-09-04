@@ -45,8 +45,10 @@ function DateSeparator({ date }: { date: string }) {
   );
 }
 
-function ChatMessageComponent({ msg, isOwn, onReply, onEdit, onDelete, onToggleReaction }: { msg: MessageWithMeta; isOwn: boolean; onReply: () => void; onEdit: () => void; onDelete: () => void; onToggleReaction: (messageId: string, emoji: string) => void }) {
+function ChatMessageComponent({ msg, isOwn, canDelete, onReply, onEdit, onDelete, onToggleReaction }: { msg: MessageWithMeta; isOwn: boolean; canDelete: boolean; onReply: () => void; onEdit: () => void; onDelete: () => void; onToggleReaction: (messageId: string, emoji: string) => void }) {
   const [showActions, setShowActions] = React.useState(false);
+
+  const isDeleted = !!msg.deleted_at;
 
   return (
     <div className={`group flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}>
@@ -63,34 +65,45 @@ function ChatMessageComponent({ msg, isOwn, onReply, onEdit, onDelete, onToggleR
             </span>
             {msg.pinned && <Pin className="w-3 h-3 text-galaxy-400" />}
           </div>
-          {msg.reply_to && (
+          {msg.reply_to && !isDeleted && (
             <div className="text-xs text-slate-400 mb-1 px-2 py-1 rounded-lg bg-white/5 border border-white/5">
               <span className="text-slate-300">{msg.reply_to.username}</span>: {msg.reply_to.message}
             </div>
           )}
-          <p className="text-sm text-slate-200 break-words">{msg.message}</p>
-          {msg.reactions && msg.reactions.length > 0 && (
+          {isDeleted ? (
+            <p className="text-sm text-slate-500 italic">Pesan telah dihapus</p>
+          ) : (
+            <p className="text-sm text-slate-200 break-words">{msg.message}</p>
+          )}
+          {!isDeleted && msg.reactions && msg.reactions.length > 0 && (
             <ChatReactions messageId={msg.id} reactions={msg.reactions} onToggleReaction={onToggleReaction} />
           )}
         </div>
-        <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : ''} opacity-0 group-hover:opacity-100 transition-opacity`}>
-          <button onClick={onReply} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-white" title="Reply">
-            <Reply className="w-3 h-3" />
-          </button>
-          {isOwn && (
-            <>
-              <button onClick={onEdit} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-white" title="Edit">
-                <Edit3 className="w-3 h-3" />
-              </button>
-              <button onClick={onDelete} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-red-400" title="Delete">
+        {!isDeleted && (
+          <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : ''} opacity-0 group-hover:opacity-100 transition-opacity`}>
+            <button onClick={onReply} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-white" title="Reply">
+              <Reply className="w-3 h-3" />
+            </button>
+            {isOwn && (
+              <>
+                <button onClick={onEdit} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-white" title="Edit">
+                  <Edit3 className="w-3 h-3" />
+                </button>
+                <button onClick={onDelete} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-red-400" title="Delete">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </>
+            )}
+            {canDelete && !isOwn && (
+              <button onClick={onDelete} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-red-400" title="Delete message">
                 <Trash2 className="w-3 h-3" />
               </button>
-            </>
-          )}
-          <button onClick={() => onToggleReaction(msg.id, '👍')} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-white" title="React">
-            <Smile className="w-3 h-3" />
-          </button>
-        </div>
+            )}
+            <button onClick={() => onToggleReaction(msg.id, '👍')} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-white" title="React">
+              <Smile className="w-3 h-3" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -220,10 +233,10 @@ type ReplyTo = { id: string; username: string; message: string } | null;
           schema: 'public',
           table: 'chat_messages',
         },
-        async (payload: any) => {
+        async (payload: { new: any }) => {
           const updated = payload.new as any;
           if (updated.deleted_at) {
-            setMessages((prev) => prev.filter((m) => m.id !== updated.id));
+            setMessages((prev) => prev.map((m) => m.id === updated.id ? { ...m, deleted_at: updated.deleted_at } : m));
             return;
           }
 
@@ -334,16 +347,24 @@ type ReplyTo = { id: string; username: string; message: string } | null;
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this message?')) return;
     const supabase = createClientSupabaseBrowser();
+    const msg = messages.find((m) => m.id === id);
+    const isAdmin = profile?.role === 'admin' || profile?.role === 'main_admin';
+    const canDelete = msg ? (msg.user_id === profile?.id || isAdmin) : false;
+
+    if (!canDelete) {
+      showToast('error', 'You can only delete your own messages');
+      return;
+    }
+
     const { error } = await supabase
       .from('chat_messages')
       .update({ deleted_at: new Date().toISOString() })
-      .eq('id', id)
-      .eq('user_id', profile!.id);
+      .eq('id', id);
 
     if (error) {
       showToast('error', 'Failed to delete message');
     } else {
-      setMessages((prev) => prev.filter((m) => m.id !== id));
+      setMessages((prev) => prev.map((m) => m.id === id ? { ...m, deleted_at: new Date().toISOString() } : m));
       showToast('success', 'Message deleted');
     }
   };
@@ -428,17 +449,22 @@ type ReplyTo = { id: string; username: string; message: string } | null;
                 groupedMessages.map((group) => (
                   <div key={group.date}>
                     <DateSeparator date={group.date} />
-                    {group.messages.map((msg) => (
-                      <ChatMessageComponent
-                        key={msg.id}
-                        msg={msg}
-                        isOwn={profile ? msg.username === profile.name : false}
-                        onReply={() => handleReply(msg)}
-                        onEdit={() => handleEdit(msg)}
-                        onDelete={() => handleDelete(msg.id)}
-                        onToggleReaction={handleToggleReaction}
-                      />
-                    ))}
+                    {group.messages.map((msg) => {
+                      const isAdmin = profile?.role === 'admin' || profile?.role === 'main_admin';
+                      const canDelete = isAdmin || msg.user_id === profile?.id;
+                      return (
+                        <ChatMessageComponent
+                          key={msg.id}
+                          msg={msg}
+                          isOwn={profile ? msg.username === profile.name : false}
+                          canDelete={canDelete}
+                          onReply={() => handleReply(msg)}
+                          onEdit={() => handleEdit(msg)}
+                          onDelete={() => handleDelete(msg.id)}
+                          onToggleReaction={handleToggleReaction}
+                        />
+                      );
+                    })}
                   </div>
                 ))
               )}

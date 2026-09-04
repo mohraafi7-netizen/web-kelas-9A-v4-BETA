@@ -195,39 +195,39 @@ function AdminDashboardClient() {
               <p className="text-slate-400">Monitor and manage your galaxy classroom.</p>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
               {statItems.map((stat, index) => (
-                <GlassCard key={stat.label} className="p-6 group hover:border-white/20 transition-all duration-300">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-sm text-slate-400">{stat.label}</span>
-                    <div className={`p-2 rounded-lg bg-gradient-to-r ${stat.color} bg-opacity-20`}>
-                      <stat.icon className="w-5 h-5 text-white" />
+                <GlassCard key={stat.label} className="p-4 sm:p-6 group hover:border-white/20 transition-all duration-300">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <span className="text-xs sm:text-sm text-slate-400 leading-tight">{stat.label}</span>
+                    <div className={`p-1.5 sm:p-2 rounded-lg bg-gradient-to-r ${stat.color} bg-opacity-20`}>
+                      <stat.icon className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                     </div>
                   </div>
-                  <div className="text-3xl font-bold text-white mb-1">{stat.value}</div>
-                  <div className="text-xs text-slate-500">Live</div>
+                  <div className="text-2xl sm:text-3xl font-bold text-white mb-1">{stat.value}</div>
+                  <div className="text-[10px] sm:text-xs text-slate-500">Live</div>
                 </GlassCard>
               ))}
             </div>
 
-            <GlassCard className="p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <GalaxyButton href="/admin/announcements" variant="secondary" className="justify-start">
+            <GlassCard className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4">Quick Actions</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
+                <GalaxyButton href="/admin/announcements" variant="secondary" className="justify-start text-xs sm:text-sm">
                   <Bell className="w-4 h-4" />
-                  New Announcement
+                  Announcement
                 </GalaxyButton>
-                <GalaxyButton href="/admin/members" variant="secondary" className="justify-start">
+                <GalaxyButton href="/admin/members" variant="secondary" className="justify-start text-xs sm:text-sm">
                   <Users className="w-4 h-4" />
-                  Manage Members
+                  Members
                 </GalaxyButton>
-                <GalaxyButton href="/admin/gallery" variant="secondary" className="justify-start">
+                <GalaxyButton href="/admin/gallery" variant="secondary" className="justify-start text-xs sm:text-sm">
                   <Image className="w-4 h-4" />
-                  Upload Gallery
+                  Gallery
                 </GalaxyButton>
-                <GalaxyButton href="/admin/projects" variant="secondary" className="justify-start">
+                <GalaxyButton href="/admin/projects" variant="secondary" className="justify-start text-xs sm:text-sm">
                   <FolderOpen className="w-4 h-4" />
-                  Manage Projects
+                  Projects
                 </GalaxyButton>
               </div>
             </GlassCard>
