@@ -42,6 +42,7 @@ function AdminDashboardClient() {
   const pathname = usePathname();
   const { profile, logout } = useAuth();
   const [stats, setStats] = React.useState({ members: 0, admins: 0, announcements: 0, gallery: 0, projects: 0, tasks: 0, polls: 0, schedule: 0, piketToday: 0 });
+  const [quickActionOpen, setQuickActionOpen] = React.useState(false);
 
   React.useEffect(() => {
     const supabase = createClientSupabaseBrowser();
@@ -217,9 +218,21 @@ function AdminDashboardClient() {
                   <Bell className="w-4 h-4" />
                   Announcement
                 </GalaxyButton>
+                <GalaxyButton href="/admin/polls" variant="secondary" className="justify-start text-xs sm:text-sm">
+                  <BarChart3 className="w-4 h-4" />
+                  Polling
+                </GalaxyButton>
+                <GalaxyButton href="/admin/schedule" variant="secondary" className="justify-start text-xs sm:text-sm">
+                  <ClipboardList className="w-4 h-4" />
+                  Schedule
+                </GalaxyButton>
                 <GalaxyButton href="/admin/members" variant="secondary" className="justify-start text-xs sm:text-sm">
                   <Users className="w-4 h-4" />
                   Members
+                </GalaxyButton>
+                <GalaxyButton href="/admin/management" variant="secondary" className="justify-start text-xs sm:text-sm">
+                  <Shield className="w-4 h-4" />
+                  User Management
                 </GalaxyButton>
                 <GalaxyButton href="/admin/gallery" variant="secondary" className="justify-start text-xs sm:text-sm">
                   <Image className="w-4 h-4" />
@@ -228,6 +241,10 @@ function AdminDashboardClient() {
                 <GalaxyButton href="/admin/projects" variant="secondary" className="justify-start text-xs sm:text-sm">
                   <FolderOpen className="w-4 h-4" />
                   Projects
+                </GalaxyButton>
+                <GalaxyButton href="/admin/storage" variant="secondary" className="justify-start text-xs sm:text-sm">
+                  <Settings className="w-4 h-4" />
+                  Storage
                 </GalaxyButton>
               </div>
             </GlassCard>

@@ -5,6 +5,7 @@ import { Navbar } from '@/components/navbar';
 import { Footer } from '@/components/footer';
 import { SpaceBackground } from '@/components/ui';
 import { Sidebar } from '@/components/sidebar/Sidebar';
+import { AdminMobileNav } from '@/components/admin/AdminMobileNav';
 import Providers from './providers';
 import { OnboardingModal } from '@/components/ui/OnboardingModal';
 import { RouteGuard } from '@/components/RouteGuard';
@@ -65,9 +66,10 @@ export default function RootLayout({
             <Sidebar />
             <div className="flex-1 md:ml-[var(--sidebar-width,16rem)] flex flex-col min-h-screen transition-all duration-300">
               <Navbar />
-              <main className="flex-1 relative z-10">{children}</main>
+              <main className="flex-1 relative z-10 pb-20 md:pb-0">{children}</main>
               <Footer />
             </div>
+            <AdminMobileNav />
           </RouteGuard>
           <OnboardingModal />
         </Providers>

@@ -15,6 +15,9 @@ const bottomNavItems = [
 
 function MobileBottomNav() {
   const pathname = usePathname();
+  const isAdminRoute = pathname.startsWith('/admin');
+
+  if (isAdminRoute) return null;
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 glass-nav border-t border-white/5" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
