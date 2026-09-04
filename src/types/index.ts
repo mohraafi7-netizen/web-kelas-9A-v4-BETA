@@ -11,6 +11,9 @@ export interface Database {
           photo_url: string | null;
           photo_path: string | null;
           attendance_number: number | null;
+          instagram_url: string | null;
+          tiktok_url: string | null;
+          last_seen: string | null;
           created_at: string;
         };
         Insert: {
@@ -22,6 +25,9 @@ export interface Database {
           photo_url?: string | null;
           photo_path?: string | null;
           attendance_number?: number | null;
+          instagram_url?: string | null;
+          tiktok_url?: string | null;
+          last_seen?: string | null;
           created_at?: string;
         };
         Update: {
@@ -33,6 +39,9 @@ export interface Database {
           photo_url?: string | null;
           photo_path?: string | null;
           attendance_number?: number | null;
+          instagram_url?: string | null;
+          tiktok_url?: string | null;
+          last_seen?: string | null;
         };
       };
       tasks: {
@@ -407,6 +416,10 @@ export interface Database {
           sender_id: string;
           receiver_id: string;
           message: string;
+          message_type: string;
+          reply_to_id: string | null;
+          edited_at: string | null;
+          deleted_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -414,10 +427,137 @@ export interface Database {
           sender_id?: string;
           receiver_id?: string;
           message?: string;
+          message_type?: string;
+          reply_to_id?: string | null;
+          edited_at?: string | null;
+          deleted_at?: string | null;
           created_at?: string;
         };
         Update: {
           message?: string;
+          message_type?: string;
+          reply_to_id?: string | null;
+          edited_at?: string | null;
+          deleted_at?: string | null;
+        };
+      };
+      chat_messages: {
+        Row: {
+          id: string;
+          user_id: string;
+          username: string;
+          message: string;
+          message_type: string;
+          reply_to_id: string | null;
+          edited_at: string | null;
+          pinned: boolean;
+          deleted_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          username?: string;
+          message?: string;
+          message_type?: string;
+          reply_to_id?: string | null;
+          edited_at?: string | null;
+          pinned?: boolean;
+          deleted_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          username?: string;
+          message?: string;
+          message_type?: string;
+          reply_to_id?: string | null;
+          edited_at?: string | null;
+          pinned?: boolean;
+          deleted_at?: string | null;
+        };
+      };
+      reactions: {
+        Row: {
+          id: string;
+          message_id: string;
+          user_id: string;
+          emoji: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          message_id?: string;
+          user_id?: string;
+          emoji?: string;
+          created_at?: string;
+        };
+        Update: {
+          message_id?: string;
+          user_id?: string;
+          emoji?: string;
+        };
+      };
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          type: string;
+          title: string;
+          message: string;
+          link: string | null;
+          read: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          type?: string;
+          title?: string;
+          message?: string;
+          link?: string | null;
+          read?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          type?: string;
+          title?: string;
+          message?: string;
+          link?: string | null;
+          read?: boolean;
+        };
+      };
+      events: {
+        Row: {
+          id: string;
+          title: string;
+          description: string | null;
+          event_type: string;
+          event_date: string;
+          event_time: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title?: string;
+          description?: string | null;
+          event_type?: string;
+          event_date?: string;
+          event_time?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          event_type?: string;
+          event_date?: string;
+          event_time?: string | null;
+          created_by?: string | null;
+          updated_at?: string;
         };
       };
     };
@@ -487,3 +627,19 @@ export type AnnouncementAttachmentUpdate = Database['public']['Tables']['announc
 export type PrivateMessage = Database['public']['Tables']['private_messages']['Row'];
 export type PrivateMessageInsert = Database['public']['Tables']['private_messages']['Insert'];
 export type PrivateMessageUpdate = Database['public']['Tables']['private_messages']['Update'];
+
+export type ChatMessage = Database['public']['Tables']['chat_messages']['Row'];
+export type ChatMessageInsert = Database['public']['Tables']['chat_messages']['Insert'];
+export type ChatMessageUpdate = Database['public']['Tables']['chat_messages']['Update'];
+
+export type Reaction = Database['public']['Tables']['reactions']['Row'];
+export type ReactionInsert = Database['public']['Tables']['reactions']['Insert'];
+export type ReactionUpdate = Database['public']['Tables']['reactions']['Update'];
+
+export type Notification = Database['public']['Tables']['notifications']['Row'];
+export type NotificationInsert = Database['public']['Tables']['notifications']['Insert'];
+export type NotificationUpdate = Database['public']['Tables']['notifications']['Update'];
+
+export type Event = Database['public']['Tables']['events']['Row'];
+export type EventInsert = Database['public']['Tables']['events']['Insert'];
+export type EventUpdate = Database['public']['Tables']['events']['Update'];

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/providers/AuthProvider';
@@ -12,25 +12,23 @@ import { useRouter } from 'next/navigation';
 
   const mainNavItems = [
     { href: '/', label: 'Home' },
+    { href: '/hub', label: 'Class Hub' },
     { href: '/members', label: 'Members' },
-    { href: '/announcements', label: 'Announcements' },
-    { href: '/tasks', label: 'Tasks' },
     { href: '/chat', label: 'Chat' },
     { href: '/profile', label: 'Profile' },
-    { href: '/about', label: 'About' },
   ];
 
   const featureNavItems = [
     { href: '/schedule', label: 'Schedule' },
     { href: '/duty', label: 'Piket' },
+    { href: '/announcements', label: 'Announcements' },
+    { href: '/tasks', label: 'Tasks' },
     { href: '/gallery', label: 'Gallery' },
     { href: '/projects', label: 'Projects' },
-    { href: '/materials', label: 'Materials' },
-    { href: '/attendance', label: 'Attendance' },
     { href: '/voting', label: 'Voting' },
     { href: '/ranking', label: 'Ranking' },
     { href: '/birthdays', label: 'Birthdays' },
-    { href: '/poetry', label: 'Words & Poetry' },
+    { href: '/poetry', label: 'Poetry' },
     { href: '/events', label: 'Events' },
     { href: '/settings', label: 'Settings' },
   ];
@@ -68,13 +66,21 @@ function Navbar() {
               </span>
             </Link>
 
-            <button
-              className="md:hidden p-2 rounded-lg glass hover:bg-white/10 transition-colors"
-              onClick={() => setIsOpen(!isOpen)}
-              aria-label="Toggle menu"
-            >
-              {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                className="p-2 rounded-lg glass hover:bg-white/10 transition-colors"
+                aria-label="Search"
+              >
+                <Search className="w-5 h-5" />
+              </button>
+              <button
+                className="md:hidden p-2 rounded-lg glass hover:bg-white/10 transition-colors"
+                onClick={() => setIsOpen(!isOpen)}
+                aria-label="Toggle menu"
+              >
+                {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -86,7 +92,7 @@ function Navbar() {
               exit={{ opacity: 0, height: 0 }}
               className="md:hidden mt-2 glass-strong rounded-2xl overflow-hidden"
             >
-              <div className="px-4 py-4 space-y-2 max-h-[70vh] overflow-y-auto">
+              <div className="px-4 py-4 space-y-1 max-h-[70vh] overflow-y-auto">
                 {mainNavItems.map((item) => (
                   <Link
                     key={item.href}
@@ -121,27 +127,9 @@ function Navbar() {
                   </Link>
                 ))}
                 <div className="pt-2 pb-1 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Class
-                </div>
-                {featureNavItems.slice(4, 8).map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setIsOpen(false)}
-                    className={cn(
-                      'block px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200',
-                      pathname === item.href
-                        ? 'bg-galaxy-600/20 text-white'
-                        : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-                <div className="pt-2 pb-1 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   More
                 </div>
-                {featureNavItems.slice(8).map((item) => (
+                {featureNavItems.slice(4).map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}

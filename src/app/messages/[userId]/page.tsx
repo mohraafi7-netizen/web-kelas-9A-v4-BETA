@@ -5,30 +5,41 @@ import { Section } from '@/components/ui';
 import { GlassCard } from '@/components/ui';
 import { GalaxyButton } from '@/components/ui';
 import { SpaceBackground } from '@/components/ui';
-import { Send, ArrowLeft } from 'lucide-react';
+import { Send, ArrowLeft, Reply, Edit3, Trash2, Smile, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui';
+import { ChatReactions } from '@/components/chat/ChatReactions';
+import type { PrivateMessage, Reaction } from '@/types';
 
-interface PrivateMessage {
+type PrivateMessageWithMeta = {
   id: string;
   sender_id: string;
   receiver_id: string;
   message: string;
+  message_type: string;
+  reply_to_id: string | null;
+  edited_at: string | null;
+  deleted_at: string | null;
   created_at: string;
-}
+  reactions?: Reaction[];
+  reply_to?: { username: string; message: string } | null;
+};
 
 export default function PrivateChatPage({ params }: { params: Promise<{ userId: string }> }) {
   const { profile } = useAuth();
   const router = useRouter();
   const { showToast } = useToast();
-  const [messages, setMessages] = React.useState<PrivateMessage[]>([]);
+  const [messages, setMessages] = React.useState<PrivateMessageWithMeta[]>([]);
   const [input, setInput] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [sending, setSending] = React.useState(false);
   const [otherUserId, setOtherUserId] = React.useState('');
   const [otherUserName, setOtherUserName] = React.useState('');
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+type PrivateReplyTo = { id: string; sender_id: string; username: string; message: string } | null;
+  const [replyTo, setReplyTo] = React.useState<PrivateReplyTo>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const processedRef = React.useRef<Set<string>>(new Set());
   const realtimeStatusRef = React.useRef<'connecting' | 'connected' | 'failed'>('connecting');
@@ -48,14 +59,19 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
       try {
         const { data } = await supabase
           .from('private_messages')
-          .select('id, sender_id, receiver_id, message, created_at')
+          .select('id, sender_id, receiver_id, message, message_type, reply_to_id, edited_at, deleted_at, created_at')
           .or(`and(sender_id.eq.${profile.id},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${profile.id})`)
+          .is('deleted_at', null)
           .order('created_at', { ascending: true })
           .limit(100);
 
         if (data) {
-          setMessages(data as PrivateMessage[]);
-          (data as PrivateMessage[]).forEach((m) => processedRef.current.add(m.id));
+          const mapped: PrivateMessageWithMeta[] = (data as any[]).map((msg) => ({
+            ...msg,
+            reactions: [],
+          }));
+          setMessages(mapped);
+          mapped.forEach((m) => processedRef.current.add(m.id));
         }
       } catch (error) {
         console.error('[Private Chat Fetch Error]', error);
@@ -81,7 +97,7 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
     fetchOtherUser();
 
     const channel = supabase
-      .channel(`private-chat-${otherUserId}`)
+      .channel(`private-chat-${otherUserId}-upgraded`)
       .on(
         'postgres_changes',
         {
@@ -90,11 +106,32 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
           table: 'private_messages',
           filter: `or(and(sender_id.eq.${profile.id},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${profile.id}))`,
         },
-        (payload: { new: PrivateMessage }) => {
-          const newMsg = payload.new as PrivateMessage;
+        async (payload: { new: any }) => {
+          const newMsg = payload.new as any;
           if (processedRef.current.has(newMsg.id)) return;
+          if (newMsg.deleted_at) return;
+
           processedRef.current.add(newMsg.id);
-          setMessages((prev) => [...prev, newMsg]);
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, { ...newMsg, reactions: [] }];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'private_messages',
+        },
+        (payload: { new: any }) => {
+          const updated = payload.new as any;
+          if (updated.deleted_at) {
+            setMessages((prev) => prev.filter((m) => m.id !== updated.id));
+            return;
+          }
+          setMessages((prev) => prev.map((m) => m.id === updated.id ? { ...m, ...updated } : m));
         }
       )
       .subscribe((status: string) => {
@@ -102,7 +139,6 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
           realtimeStatusRef.current = 'connected';
         } else if (status === 'CHANNEL_ERROR') {
           realtimeStatusRef.current = 'failed';
-          console.error('[Private Chat Realtime Error] Subscription failed');
         }
       });
 
@@ -117,28 +153,53 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !profile || !otherUserId || sending) return;
+    if ((!input.trim() && !replyTo) || !profile || !otherUserId || sending) return;
 
-    const tempId = `temp-${Date.now()}`;
-    const optimisticMessage: PrivateMessage = {
-      id: tempId,
-      sender_id: profile.id,
-      receiver_id: otherUserId,
-      message: input.trim(),
-      created_at: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, optimisticMessage]);
-    processedRef.current.add(tempId);
-    setInput('');
     setSending(true);
+    const supabase = createClientSupabaseBrowser();
 
     try {
-      const supabase = createClientSupabaseBrowser();
+      if (editingId) {
+        const { error } = await supabase
+          .from('private_messages')
+          .update({ message: input.trim(), edited_at: new Date().toISOString() })
+          .eq('id', editingId)
+          .eq('sender_id', profile.id);
+
+        if (error) throw error;
+        setMessages((prev) => prev.map((m) => m.id === editingId ? { ...m, message: input.trim(), edited_at: new Date().toISOString() } : m));
+        setEditingId(null);
+        setInput('');
+        setReplyTo(null);
+        return;
+      }
+
+      const tempId = `temp-${Date.now()}`;
+      const optimisticMessage: PrivateMessageWithMeta = {
+        id: tempId,
+        sender_id: profile.id,
+        receiver_id: otherUserId,
+        message: input.trim(),
+        message_type: 'text',
+        reply_to_id: replyTo?.id || null,
+        edited_at: null,
+        deleted_at: null,
+        created_at: new Date().toISOString(),
+        reactions: [],
+        reply_to: replyTo ? { username: replyTo.sender_id === profile.id ? 'You' : otherUserName, message: replyTo.message } : null,
+      };
+
+      setMessages((prev) => [...prev, optimisticMessage]);
+      processedRef.current.add(tempId);
+      setInput('');
+      setReplyTo(null);
+
       const { error } = await supabase.from('private_messages').insert({
         sender_id: profile.id,
         receiver_id: otherUserId,
         message: optimisticMessage.message,
+        message_type: 'text',
+        reply_to_id: replyTo?.id || null,
       });
 
       if (error) {
@@ -149,28 +210,61 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
           hint: error.hint,
         });
         showToast('error', 'Failed to send message');
-        setMessages((prev) => {
-          const filtered = prev.filter((m) => m.id !== tempId);
-          processedRef.current = new Set(filtered.map((m) => m.id));
-          return filtered;
-        });
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
       }
     } catch (err) {
       console.error('[Private Chat Send Exception]', err);
       showToast('error', 'Failed to send message');
-      setMessages((prev) => {
-        const filtered = prev.filter((m) => m.id !== tempId);
-        processedRef.current = new Set(filtered.map((m) => m.id));
-        return filtered;
-      });
     } finally {
       setSending(false);
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this message?')) return;
+    const supabase = createClientSupabaseBrowser();
+    const { error } = await supabase
+      .from('private_messages')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('sender_id', profile!.id);
+
+    if (error) {
+      showToast('error', 'Failed to delete message');
+    } else {
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+      showToast('success', 'Message deleted');
+    }
+  };
+
+  const handleEdit = (msg: PrivateMessageWithMeta) => {
+    setEditingId(msg.id);
+    setInput(msg.message);
+    setReplyTo(msg.reply_to ? { id: msg.id, sender_id: msg.sender_id, username: msg.reply_to.username, message: msg.reply_to.message } : null);
+  };
+
+  const handleToggleReaction = async (messageId: string, emoji: string) => {
+    if (!profile) return;
+    const supabase = createClientSupabaseBrowser();
+
+    const { data: existing } = await supabase
+      .from('reactions')
+      .select('id')
+      .eq('message_id', messageId)
+      .eq('user_id', profile.id)
+      .eq('emoji', emoji)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase.from('reactions').delete().eq('id', existing.id);
+    } else {
+      await supabase.from('reactions').insert({ message_id: messageId, user_id: profile.id, emoji });
+    }
+  };
+
   return (
     <main className="min-h-screen">
-      <SpaceBackground particleCount={40} enableParallax={false} />
+      <SpaceBackground particleCount={40} enableParallax={false } />
       <Section title="" subtitle="" className="relative z-10">
         <div className="max-w-3xl mx-auto">
           <GlassCard className="p-6 flex flex-col h-[70vh]">
@@ -209,16 +303,43 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
                 messages.map((msg) => {
                   const isOwn = msg.sender_id === profile?.id;
                   return (
-                    <div key={msg.id} className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                    <div key={msg.id} className={`group flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}>
                       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-galaxy-600 to-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
                         {(isOwn ? profile?.name : otherUserName)[0]?.toUpperCase()}
                       </div>
                       <div className={`flex-1 min-w-0 ${isOwn ? 'text-right' : ''}`}>
-                        <div className={`inline-block max-w-[80%] ${isOwn ? 'bg-galaxy-600/20 border-galaxy-500/30' : 'bg-white/5 border-white/10'} border rounded-2xl px-4 py-2.5`}>
+                        <div className={`inline-block max-w-[85%] ${isOwn ? 'bg-galaxy-600/20 border-galaxy-500/30' : 'bg-white/5 border-white/10'} border rounded-2xl px-4 py-2.5`}>
+                          {msg.reply_to && (
+                            <div className="text-xs text-slate-400 mb-1 px-2 py-1 rounded-lg bg-white/5 border border-white/5">
+                              <span className="text-slate-300">{msg.reply_to.username}</span>: {msg.reply_to.message}
+                            </div>
+                          )}
                           <p className="text-sm text-slate-200 break-words">{msg.message}</p>
+                          {msg.reactions && msg.reactions.length > 0 && (
+                            <ChatReactions messageId={msg.id} reactions={msg.reactions} onToggleReaction={handleToggleReaction} />
+                          )}
+                        </div>
+                        <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : ''} opacity-0 group-hover:opacity-100 transition-opacity`}>
+                           <button onClick={() => setReplyTo({ id: msg.id, sender_id: msg.sender_id, username: msg.sender_id === profile!.id ? 'You' : otherUserName, message: msg.message })} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-white" title="Reply">
+                            <Reply className="w-3 h-3" />
+                          </button>
+                          {isOwn && (
+                            <>
+                              <button onClick={() => handleEdit(msg)} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-white" title="Edit">
+                                <Edit3 className="w-3 h-3" />
+                              </button>
+                              <button onClick={() => handleDelete(msg.id)} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-red-400" title="Delete">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </>
+                          )}
+                          <button onClick={() => handleToggleReaction(msg.id, '👍')} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-white" title="React">
+                            <Smile className="w-3 h-3" />
+                          </button>
                         </div>
                         <span className="text-[10px] text-slate-500 mt-1 block">
                           {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {msg.edited_at && ' (edited)'}
                         </span>
                       </div>
                     </div>
@@ -235,8 +356,8 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
                 placeholder="Type a message..."
                 className="flex-1 px-4 py-3 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-galaxy-500"
               />
-              <GalaxyButton type="submit" disabled={!input.trim() || sending} icon={<Send className="w-4 h-4" />}>
-                {sending ? 'Sending...' : 'Send'}
+              <GalaxyButton type="submit" disabled={!input.trim() && !replyTo} icon={<Send className="w-4 h-4" />}>
+                {sending ? 'Sending...' : editingId ? 'Update' : 'Send'}
               </GalaxyButton>
             </form>
           </GlassCard>

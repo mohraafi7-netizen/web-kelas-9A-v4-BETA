@@ -3,9 +3,12 @@
 import * as React from 'react';
 import { motion } from 'framer-motion';
 import { GalaxyBadge } from '@/components/ui';
+import { OnlineStatusIndicator } from '@/components/presence/OnlineStatusIndicator';
 import { storage } from '@/lib/storage';
 import type { Profile } from '@/types';
 import { getAttendanceLabel } from '@/data/memberPhotos';
+import { Instagram, MessageCircle } from 'lucide-react';
+import Link from 'next/link';
 
 function getInitials(name: string) {
   const parts = name.trim().split(' ').filter(Boolean);
@@ -31,6 +34,11 @@ function MemberCard({ member, onClick }: MemberCardProps) {
   const handlePhotoError = React.useCallback(() => {
     setShowInitials(true);
   }, []);
+
+  const socials = [
+    member.instagram_url ? { href: member.instagram_url, icon: Instagram, label: 'Instagram' } : null,
+    member.tiktok_url ? { href: member.tiktok_url, icon: MessageCircle, label: 'TikTok' } : null,
+  ].filter(Boolean) as Array<{ href: string; icon: any; label: string }>;
 
   return (
     <motion.button
@@ -65,13 +73,34 @@ function MemberCard({ member, onClick }: MemberCardProps) {
           {attendanceLabel && (
             <p className="text-[10px] font-semibold text-galaxy-300 tracking-wider mb-1">{attendanceLabel}</p>
           )}
-          <h3 className="text-sm font-semibold text-white line-clamp-2 leading-snug mb-1.5">
-            {member.name}
-          </h3>
+          <div className="flex items-center gap-2 mb-1.5">
+            <h3 className="text-sm font-semibold text-white line-clamp-2 leading-snug flex-1">
+              {member.name}
+            </h3>
+            <OnlineStatusIndicator userId={member.id} size="sm" />
+          </div>
           {member.role && (
             <GalaxyBadge variant="secondary" size="sm" className="truncate">
               {member.role}
             </GalaxyBadge>
+          )}
+
+          {socials.length > 0 && (
+            <div className="flex items-center gap-2 mt-3">
+              {socials.map((social) => (
+                <Link
+                  key={social.href}
+                  href={social.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors"
+                  title={social.label}
+                >
+                  <social.icon className="w-3.5 h-3.5" />
+                </Link>
+              ))}
+            </div>
           )}
         </div>
       </div>

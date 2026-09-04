@@ -7,16 +7,28 @@ import { useAuth } from '@/providers/AuthProvider';
 import { Section } from '@/components/ui';
 import { GlassCard } from '@/components/ui';
 import { Button } from '@/components/ui';
-import { User, Settings as SettingsIcon, Shield, Upload } from 'lucide-react';
+import { User, Settings as SettingsIcon, Shield, Upload, Instagram } from 'lucide-react';
+import { useToast } from '@/components/ui';
 
 export default function SettingsPage() {
   const router = useRouter();
   const { profile, logout } = useAuth();
+  const { showToast } = useToast();
   const [currentPassword, setCurrentPassword] = React.useState('');
   const [newPassword, setNewPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [message, setMessage] = React.useState('');
   const [error, setError] = React.useState('');
+  const [instagramUrl, setInstagramUrl] = React.useState('');
+  const [tiktokUrl, setTiktokUrl] = React.useState('');
+  const [savingSocial, setSavingSocial] = React.useState(false);
+
+  React.useEffect(() => {
+    if (profile) {
+      setInstagramUrl(profile.instagram_url || '');
+      setTiktokUrl(profile.tiktok_url || '');
+    }
+  }, [profile]);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +64,31 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveSocial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingSocial(true);
+    setMessage('');
+    setError('');
+
+    try {
+      const supabase = createClientSupabaseBrowser();
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          instagram_url: instagramUrl.trim() || null,
+          tiktok_url: tiktokUrl.trim() || null,
+        })
+        .eq('id', profile!.id);
+
+      if (error) throw error;
+      showToast('success', 'Social media updated');
+    } catch {
+      showToast('error', 'Failed to update social media');
+    } finally {
+      setSavingSocial(false);
+    }
+  };
+
   if (!profile) {
     return (
       <main className="min-h-screen">
@@ -81,6 +118,43 @@ export default function SettingsPage() {
               </div>
             </div>
             <p className="text-xs text-slate-500 capitalize">Role: {profile.role.replace('_', ' ')}</p>
+          </GlassCard>
+
+          <GlassCard className="p-6">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="p-3 rounded-xl bg-galaxy-600/10 border border-galaxy-500/10">
+                <Instagram className="w-6 h-6 text-galaxy-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-white">Social Media</h3>
+                <p className="text-sm text-slate-400">Connect your social accounts</p>
+              </div>
+            </div>
+            <form onSubmit={handleSaveSocial} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2 text-slate-300">Instagram URL</label>
+                <input
+                  type="url"
+                  value={instagramUrl}
+                  onChange={(e) => setInstagramUrl(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-galaxy-500"
+                  placeholder="https://instagram.com/username"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2 text-slate-300">TikTok URL</label>
+                <input
+                  type="url"
+                  value={tiktokUrl}
+                  onChange={(e) => setTiktokUrl(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-galaxy-500"
+                  placeholder="https://tiktok.com/@username"
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={savingSocial}>
+                {savingSocial ? 'Saving...' : 'Save Social Media'}
+              </Button>
+            </form>
           </GlassCard>
 
           <GlassCard className="p-6">

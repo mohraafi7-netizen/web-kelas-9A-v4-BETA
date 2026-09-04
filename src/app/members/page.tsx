@@ -22,14 +22,14 @@ export default function MembersPage() {
 
     const fetchMembers = async () => {
       try {
-        const { data } = await supabase.from('profiles').select('id, name, role, photo_path, created_at').order('name').limit(200);
+        const { data } = await supabase.from('profiles').select('id, name, role, photo_path, attendance_number, instagram_url, tiktok_url, last_seen, created_at').order('name').limit(200);
         if (data && data.length > 0) {
           setMembers(data);
         } else {
-          setMembers(MEMBERS_DATA.map(m => ({ ...m, photo_path: null, attendance_number: null, created_at: new Date().toISOString() })));
+          setMembers(MEMBERS_DATA.map(m => ({ ...m, photo_path: null, attendance_number: null, instagram_url: null, tiktok_url: null, last_seen: null, created_at: new Date().toISOString() })));
         }
       } catch {
-        setMembers(MEMBERS_DATA.map(m => ({ ...m, photo_path: null, attendance_number: null, created_at: new Date().toISOString() })));
+        setMembers(MEMBERS_DATA.map(m => ({ ...m, photo_path: null, attendance_number: null, instagram_url: null, tiktok_url: null, last_seen: null, created_at: new Date().toISOString() })));
       } finally {
         setLoading(false);
       }

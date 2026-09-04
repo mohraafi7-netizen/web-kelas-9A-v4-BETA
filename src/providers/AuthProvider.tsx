@@ -13,6 +13,12 @@ export interface Profile {
   role: UserRole;
   name: string;
   email: string;
+  photo_url: string | null;
+  photo_path: string | null;
+  attendance_number: number | null;
+  instagram_url: string | null;
+  tiktok_url: string | null;
+  last_seen: string | null;
 }
 
 interface AuthState {
@@ -38,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, username, role, name, email')
+      .select('id, username, role, name, email, photo_url, photo_path, attendance_number, instagram_url, tiktok_url, last_seen')
       .eq('id', userId)
       .maybeSingle();
 

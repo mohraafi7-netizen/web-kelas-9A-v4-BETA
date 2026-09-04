@@ -1,6 +1,7 @@
 import * as React from 'react';
 import Link from 'next/link';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Instagram, MessageCircle } from 'lucide-react';
+import { ClassSocialMedia } from '@/components/social/ClassSocialMedia';
 
 function Footer() {
   return (
@@ -19,9 +20,14 @@ function Footer() {
               GALAXY CLASS
             </span>
           </div>
-          <p className="text-sm text-slate-400">
-            © {new Date().getFullYear()} Galaxy Class. All rights reserved.
-          </p>
+
+          <div className="flex items-center gap-6">
+            <ClassSocialMedia />
+            <span className="text-sm text-slate-400">
+              © {new Date().getFullYear()} Galaxy Class. All rights reserved.
+            </span>
+          </div>
+
           <div className="flex gap-6">
             {['About', 'Members', 'Contact'].map((item) => (
               <Link
