@@ -15,6 +15,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { ChatMessage, Reaction } from '@/types';
 import { isValidUuid, isTemporaryMessage } from '@/lib/utils/uuid';
+import { useUnread } from '@/providers/UnreadNotificationsProvider';
 
 type MessageWithMeta = {
   id: string;
@@ -115,6 +116,17 @@ function ChatMessageComponent({ msg, isOwn, canDelete, onReply, onEdit, onDelete
 export default function ChatPage() {
   const { profile } = useAuth();
   const { showToast } = useToast();
+  const { markPublicChatRead, setPublicChatActive } = useUnread();
+  React.useEffect(() => {
+    if (profile?.id) {
+      markPublicChatRead();
+    }
+  }, [profile?.id, markPublicChatRead]);
+  React.useEffect(() => {
+    if (!profile?.id) return;
+    setPublicChatActive(true);
+    return () => setPublicChatActive(false);
+  }, [profile?.id, setPublicChatActive]);
   const [messages, setMessages] = React.useState<MessageWithMeta[]>([]);
   const [input, setInput] = React.useState('');
   const [sending, setSending] = React.useState(false);

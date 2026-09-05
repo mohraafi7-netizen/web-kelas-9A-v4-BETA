@@ -5,6 +5,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import { LayoutDashboard, Users, Bell, Image, FolderOpen, Camera, BarChart3, HardDrive, Home, Menu, X, ClipboardList, Calendar, MessageCircle, Megaphone, KeyRound, Settings, Shield, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/AuthProvider';
+import { useUnread } from '@/providers/UnreadNotificationsProvider';
+import { UnreadBadge } from '@/components/ui/UnreadBadge';
 
 const navGroups = [
   {
@@ -69,6 +71,7 @@ function AdminMobileNav() {
   const router = useRouter();
   const pathname = usePathname();
   const { profile } = useAuth();
+  const { publicUnread, privateUnread, totalUnread } = useUnread();
   const [moreOpen, setMoreOpen] = React.useState(false);
 
   const showAdminLink = profile?.role === 'admin' || profile?.role === 'main_admin';
@@ -86,10 +89,17 @@ function AdminMobileNav() {
                 <button
                   key={item.href}
                   onClick={handleMoreClick}
-                  className="flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl transition-all min-w-[64px] text-slate-400 hover:text-white"
+                  className="relative flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl transition-all min-w-[64px] text-slate-400 hover:text-white"
                   aria-label="More admin options"
                 >
-                  <item.icon className="w-5 h-5" strokeWidth={2} />
+                  <span className="relative">
+                    <item.icon className="w-5 h-5" strokeWidth={2} />
+                    {totalUnread > 0 && (
+                      <span className="absolute -top-1.5 -right-2.5">
+                        <UnreadBadge count={totalUnread} size="sm" />
+                      </span>
+                    )}
+                  </span>
                   <span className="text-[10px] font-medium">{item.label}</span>
                 </button>
               );
@@ -132,6 +142,7 @@ function AdminMobileNav() {
                     <div className="space-y-1">
                       {group.items.map((item) => {
                         const active = isActive(pathname, item.href, item.key);
+                        const count = item.key === 'chat' ? publicUnread : item.key === 'messages' ? privateUnread : 0;
                         return (
                           <button
                             key={item.href}
@@ -143,7 +154,8 @@ function AdminMobileNav() {
                             aria-current={active ? 'page' : undefined}
                           >
                             <item.icon className="w-5 h-5" />
-                            {item.label}
+                            <span className="flex-1 text-left">{item.label}</span>
+                            {count > 0 && <UnreadBadge count={count} size="sm" />}
                           </button>
                         );
                       })}
@@ -170,7 +182,7 @@ function AdminMobileNav() {
                           aria-current={active ? 'page' : undefined}
                         >
                           <item.icon className="w-5 h-5" />
-                          {item.label}
+                          <span className="flex-1 text-left">{item.label}</span>
                         </button>
                       );
                     })}

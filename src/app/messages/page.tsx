@@ -13,6 +13,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { NewMessageDialog } from '@/components/messages/NewMessageDialog';
+import { useUnread } from '@/providers/UnreadNotificationsProvider';
 
 type ProfileMeta = { name: string; photo_path: string | null; photo_url: string | null };
 
@@ -58,6 +59,7 @@ function sortConversations(list: Conversation[]) {
 
 export default function MessagesPage() {
   const { profile } = useAuth();
+  const { privateUnreadByUser: providerUnreadByUser } = useUnread();
   const router = useRouter();
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [profileNames, setProfileNames] = React.useState<Record<string, ProfileMeta>>({});
@@ -388,6 +390,8 @@ export default function MessagesPage() {
               {filtered.map((conv) => {
                 const initials = (conv.name?.[0] ?? '?').toUpperCase();
                 const isFromOther = conv.lastSenderId !== profile?.id;
+                const providerCount = providerUnreadByUser[conv.userId] ?? 0;
+                const isUnread = providerCount > 0 || conv.unread;
                 return (
                   <button
                     key={conv.userId}
@@ -398,7 +402,7 @@ export default function MessagesPage() {
                     <GlassCard
                       hover
                       className={`p-3 sm:p-4 flex items-center gap-3 sm:gap-4 cursor-pointer min-h-[64px] ${
-                        conv.unread ? 'bg-galaxy-500/[0.04] border-galaxy-500/20' : ''
+                        isUnread ? 'bg-galaxy-500/[0.04] border-galaxy-500/20' : ''
                       }`}
                     >
                       <div className="relative shrink-0">
@@ -414,7 +418,7 @@ export default function MessagesPage() {
                             {initials}
                           </div>
                         )}
-                        {conv.unread && (
+                        {isUnread && (
                           <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-galaxy-400 ring-2 ring-slate-900" />
                         )}
                       </div>
@@ -422,7 +426,7 @@ export default function MessagesPage() {
                         <div className="flex items-center justify-between gap-2">
                           <p
                             className={`truncate ${
-                              conv.unread ? 'font-semibold text-white' : 'font-medium text-white'
+                              isUnread ? 'font-semibold text-white' : 'font-medium text-white'
                             }`}
                           >
                             {conv.name}
@@ -433,7 +437,7 @@ export default function MessagesPage() {
                         </div>
                         <p
                           className={`text-sm truncate ${
-                            conv.unread ? 'text-slate-200' : 'text-slate-400'
+                            isUnread ? 'text-slate-200' : 'text-slate-400'
                           }`}
                         >
                           {isFromOther ? '' : <span className="text-slate-500">You: </span>}

@@ -14,6 +14,7 @@ import { ChatReactions } from '@/components/chat/ChatReactions';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { PrivateMessage, Reaction } from '@/types';
 import { isValidUuid, isTemporaryMessage } from '@/lib/utils/uuid';
+import { useUnread } from '@/providers/UnreadNotificationsProvider';
 
 type PrivateMessageWithMeta = {
   id: string;
@@ -33,6 +34,7 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
   const { profile } = useAuth();
   const router = useRouter();
   const { showToast } = useToast();
+  const { markConversationRead } = useUnread();
   const [messages, setMessages] = React.useState<PrivateMessageWithMeta[]>([]);
   const [input, setInput] = React.useState('');
   const [loading, setLoading] = React.useState(true);
@@ -54,6 +56,11 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
       setOtherUserId(resolved.userId);
     });
   }, [params]);
+
+  React.useEffect(() => {
+    if (!otherUserId || !profile?.id) return;
+    markConversationRead(otherUserId);
+  }, [otherUserId, profile?.id, markConversationRead]);
 
   React.useEffect(() => {
     if (!otherUserId || !profile?.id) return;

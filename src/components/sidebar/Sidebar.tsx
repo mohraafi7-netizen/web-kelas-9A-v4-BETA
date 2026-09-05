@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/AuthProvider';
+import { useUnread } from '@/providers/UnreadNotificationsProvider';
+import { UnreadBadge } from '@/components/ui/UnreadBadge';
 import { canViewAdminPanel, canManageRoles } from '@/lib/auth/permissions';
 import { motion } from 'framer-motion';
 import {
@@ -66,6 +68,7 @@ function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { profile, logout } = useAuth();
+  const { publicUnread, privateUnread } = useUnread();
   const [collapsed, setCollapsed] = React.useState(false);
 
   const handleLogout = async () => {
@@ -117,6 +120,12 @@ function Sidebar() {
               <div className="space-y-1">
                 {group.items.map((item) => {
                   const active = isActive(item.href);
+                  const unreadCount =
+                    item.href === '/chat'
+                      ? publicUnread
+                      : item.href === '/messages'
+                      ? privateUnread
+                      : 0;
                   return (
                     <Link
                       key={item.href}
@@ -137,7 +146,12 @@ function Sidebar() {
                       )}
                       <item.icon className={cn('w-5 h-5 shrink-0 relative z-10', active ? 'text-galaxy-400' : '')} />
                       {!collapsed && <span className="relative z-10">{item.label}</span>}
-                      {active && !collapsed && (
+                      {!collapsed && unreadCount > 0 && (
+                        <span className="ml-auto relative z-10">
+                          <UnreadBadge count={unreadCount} size="sm" />
+                        </span>
+                      )}
+                      {active && !collapsed && unreadCount === 0 && (
                         <ChevronRight className="w-4 h-4 ml-auto text-galaxy-400 relative z-10" />
                       )}
                     </Link>

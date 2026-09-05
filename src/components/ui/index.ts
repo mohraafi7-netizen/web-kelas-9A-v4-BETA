@@ -23,4 +23,5 @@ export { SchedulePreview } from './SchedulePreview';
 export { GalleryPreview } from './GalleryPreview';
 export { ClassOverview } from './ClassOverview';
 export { MobileBottomNav } from './MobileBottomNav';
+export { UnreadBadge } from './UnreadBadge';
 export { ToastContainer, useToast } from './Toast';
