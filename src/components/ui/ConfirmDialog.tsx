@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trash2, AlertCircle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -50,6 +51,11 @@ function ConfirmDialog({
 }: ConfirmDialogProps) {
   const styles = variantStyles[variant];
   const confirmRef = React.useRef<HTMLButtonElement>(null);
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   React.useEffect(() => {
     if (!open) return;
@@ -62,11 +68,38 @@ function ConfirmDialog({
 
   React.useEffect(() => {
     if (open) {
-      setTimeout(() => confirmRef.current?.focus(), 50);
+      const id = window.setTimeout(() => confirmRef.current?.focus(), 80);
+      return () => window.clearTimeout(id);
     }
   }, [open]);
 
-  return (
+  React.useEffect(() => {
+    if (!open) return;
+    const prevOverflow = document.body.style.overflow;
+    const prevPosition = document.body.style.position;
+    const prevWidth = document.body.style.width;
+    const prevTop = document.body.style.top;
+    const scrollY = window.scrollY;
+
+    document.body.style.overflow = 'hidden';
+    if (scrollY > 0) {
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+    }
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.position = prevPosition;
+      document.body.style.top = prevTop;
+      document.body.style.width = prevWidth;
+      if (scrollY > 0) {
+        window.scrollTo(0, scrollY);
+      }
+    };
+  }, [open]);
+
+  const dialog = (
     <AnimatePresence>
       {open && (
         <motion.div
@@ -74,23 +107,30 @@ function ConfirmDialog({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{ paddingTop: 'env(safe-area-inset-top)' }}
           role="dialog"
           aria-modal="true"
           aria-labelledby="confirm-dialog-title"
         >
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/70 backdrop-blur-md"
             onClick={() => !loading && onCancel()}
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, scale: 0.96, y: 24 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            exit={{ opacity: 0, scale: 0.96, y: 24 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="relative w-full sm:max-w-md glass-strong rounded-t-3xl sm:rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
+            className={cn(
+              'relative w-full sm:max-w-md',
+              'glass-strong border border-white/10 shadow-2xl',
+              'rounded-t-3xl sm:rounded-2xl',
+              'flex flex-col',
+              'max-h-[100dvh] sm:max-h-[85dvh]'
+            )}
           >
-            <div className="p-5 sm:p-6">
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6">
               <div className="flex items-start gap-3 mb-3 sm:mb-4">
                 <div className={cn('p-2.5 rounded-xl border shrink-0', styles.iconBg)}>
                   {variant === 'danger' ? (
@@ -104,7 +144,7 @@ function ConfirmDialog({
                     {title}
                   </h2>
                   {description && (
-                    <p className="mt-1 text-sm text-slate-400 leading-relaxed">{description}</p>
+                    <p className="mt-1 text-sm text-slate-400 leading-relaxed break-words">{description}</p>
                   )}
                 </div>
                 <button
@@ -116,8 +156,13 @@ function ConfirmDialog({
                   <X className="w-4 h-4" />
                 </button>
               </div>
+            </div>
 
-              <div className="flex flex-col-reverse sm:flex-row gap-2 mt-5">
+            <div
+              className="shrink-0 border-t border-white/10 px-5 sm:px-6 pt-3 pb-4 sm:pb-5"
+              style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+            >
+              <div className="flex flex-col-reverse sm:flex-row gap-2">
                 <button
                   type="button"
                   onClick={onCancel}
@@ -155,6 +200,9 @@ function ConfirmDialog({
       )}
     </AnimatePresence>
   );
+
+  if (!mounted) return null;
+  return createPortal(dialog, document.body);
 }
 
 export { ConfirmDialog };
