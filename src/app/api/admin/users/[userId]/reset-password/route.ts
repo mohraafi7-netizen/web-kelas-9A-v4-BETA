@@ -1,19 +1,33 @@
 import { createClientSupabase } from '@/lib/supabase/server';
 import { createClientSupabaseAdmin } from '@/lib/supabase/admin';
-import { getAuthenticatedUser, requireRole } from '@/lib/auth/api-auth';
+import { requireRole } from '@/lib/auth/api-auth';
 import { NextResponse } from 'next/server';
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ userId: string }> }
+) {
   try {
     const authResult = await requireRole(['main_admin'])(request);
     if (authResult instanceof Response) return authResult;
 
-    const body = await request.json();
-    const targetUserId = typeof body.user_id === 'string' ? body.user_id.trim() : '';
+    const { userId: routeUserId } = await params;
+    const targetUserId = (routeUserId ?? '').trim();
+
+    if (!targetUserId) {
+      return NextResponse.json({ error: 'user_id is required' }, { status: 400 });
+    }
+
+    let body: { password?: unknown } = {};
+    try {
+      body = (await request.json()) as { password?: unknown };
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
     const newPassword = typeof body.password === 'string' ? body.password : '';
 
-    if (!targetUserId || !newPassword) {
-      return NextResponse.json({ error: 'user_id and password are required' }, { status: 400 });
+    if (!newPassword) {
+      return NextResponse.json({ error: 'password is required' }, { status: 400 });
     }
 
     if (newPassword.length < 8) {
