@@ -5,8 +5,10 @@ import { Section } from '@/components/ui';
 import { GlassCard } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
 import { GalaxyButton } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
+import { ErrorCard } from '@/components/ui';
 import { SpaceBackground } from '@/components/ui';
-import { Search, Plus, MessageCircle, AlertCircle, Inbox } from 'lucide-react';
+import { Search, Plus, MessageCircle, Inbox } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -302,28 +304,34 @@ export default function MessagesPage() {
   return (
     <main className="min-h-screen pb-24 md:pb-12">
       <SpaceBackground particleCount={40} enableParallax={false} />
-      <Section title="Messages" subtitle="Your private conversations." className="relative z-10">
-        <div className="max-w-3xl mx-auto px-3 sm:px-0">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search conversations..."
-                className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-galaxy-500 min-h-[44px]"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => setPickerOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-galaxy-600 to-purple-600 hover:from-galaxy-500 hover:to-purple-500 text-white text-sm font-medium shadow-lg transition-colors min-h-[44px] shrink-0"
-              aria-label="Start a new conversation"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">New Message</span>
-            </button>
+      <Section className="relative z-10">
+        <div className="max-w-3xl mx-auto px-4 sm:px-0">
+          <PageHeader
+            eyebrow="Private"
+            title="Messages"
+            description="Your private conversations."
+            actions={
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-galaxy-600 to-purple-600 hover:from-galaxy-500 hover:to-purple-500 text-white text-sm font-medium shadow-lg transition-colors min-h-[44px] shrink-0"
+                aria-label="Start a new conversation"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">New Message</span>
+              </button>
+            }
+          />
+
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search conversations..."
+              className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-galaxy-500 min-h-[44px]"
+            />
           </div>
 
           <div className="flex items-center gap-2 mb-3 text-xs text-slate-500" aria-live="polite">
@@ -360,14 +368,10 @@ export default function MessagesPage() {
               ))}
             </div>
           ) : showError ? (
-            <div className="glass rounded-2xl border border-red-500/20 p-6 text-center">
-              <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-2" />
-              <p className="text-white font-medium mb-1">Couldn&apos;t load conversations</p>
-              <p className="text-sm text-slate-400 mb-4 break-words">{error}</p>
-              <GalaxyButton onClick={() => fetchConversations()}>Retry</GalaxyButton>
-            </div>
+            <ErrorCard message={error} onRetry={() => fetchConversations()} />
           ) : showEmpty ? (
             <EmptyState
+              icon={<Inbox className="w-6 h-6" />}
               title="No messages yet"
               description="Start your first private conversation with a class member."
               action={

@@ -12,6 +12,8 @@ export { OptimizedImage } from './OptimizedImage';
 export { Loading } from './Loading';
 export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
+export { ErrorCard } from './ErrorCard';
+export { PageHeader } from './PageHeader';
 export { Avatar } from './Avatar';
 export { Badge } from './Badge';
 export { SpaceBackground } from './SpaceBackground';

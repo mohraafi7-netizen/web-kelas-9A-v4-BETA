@@ -5,6 +5,7 @@ import { Section } from '@/components/ui';
 import { GlassCard } from '@/components/ui';
 import { GalaxyBadge } from '@/components/ui';
 import { GalaxyGlow } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 import { SpaceBackground } from '@/components/ui';
 import { MembersSearch } from '@/components/members';
 import { EmptyState } from '@/components/ui';
@@ -68,25 +69,24 @@ function MembersPageContent() {
   }, []);
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen pb-24 md:pb-8">
       <SpaceBackground particleCount={40} enableParallax={false} />
 
-      <Section
-        title="GALAXY CREW"
-        subtitle="Meet the astronauts of our class."
-        className="relative z-10"
-      >
-        <div className="relative">
+      <Section className="relative z-10">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-0">
           <GalaxyGlow size="lg" color="blue" className="top-0 left-0 opacity-20" />
 
-          <div className="flex items-center justify-between mb-6">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass">
-              <Users className="w-4 h-4 text-galaxy-400" />
-              <span className="text-sm font-medium text-slate-300">
-                {members.length} ACTIVE MEMBERS
-              </span>
-            </div>
-          </div>
+          <PageHeader
+            eyebrow="The Crew"
+            title="Members"
+            description="Find and connect with your classmates."
+            actions={
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full glass">
+                <Users className="w-4 h-4 text-galaxy-400" />
+                <span className="text-sm font-medium text-slate-300">{members.length} members</span>
+              </div>
+            }
+          />
 
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-5">

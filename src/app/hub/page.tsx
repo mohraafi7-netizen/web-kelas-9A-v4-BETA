@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Section } from '@/components/ui';
 import { GlassCard } from '@/components/ui';
 import { GalaxyButton } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 import { GalaxyBadge } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
 import { SpaceBackground } from '@/components/ui';
@@ -169,16 +170,23 @@ export default function HubPage() {
     return (
       <main className="min-h-screen">
         <SpaceBackground particleCount={40} enableParallax={false} />
-        <Section title="Class Hub" subtitle="Agenda & Notifications">
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <GlassCard key={i} className="p-6">
-                <div className="animate-pulse space-y-3">
-                  <div className="h-4 bg-slate-700/50 rounded w-3/4" />
-                  <div className="h-3 bg-slate-700/50 rounded w-full" />
-                </div>
-              </GlassCard>
-            ))}
+        <Section className="relative z-10">
+          <div className="max-w-5xl mx-auto px-4 sm:px-0">
+            <PageHeader
+              eyebrow="Overview"
+              title="Class Hub"
+              description="Agenda & notifications."
+            />
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <GlassCard key={i} className="p-6">
+                  <div className="animate-pulse space-y-3">
+                    <div className="h-4 bg-slate-700/50 rounded w-3/4" />
+                    <div className="h-3 bg-slate-700/50 rounded w-full" />
+                  </div>
+                </GlassCard>
+              ))}
+            </div>
           </div>
         </Section>
       </main>
@@ -186,10 +194,16 @@ export default function HubPage() {
   }
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen pb-24 md:pb-8">
       <SpaceBackground particleCount={40} enableParallax={false} />
-      <Section title="Class Hub" subtitle="Agenda & Notifications" className="relative z-10">
-        <div className="grid lg:grid-cols-3 gap-6">
+      <Section className="relative z-10">
+        <div className="max-w-5xl mx-auto px-4 sm:px-0">
+          <PageHeader
+            eyebrow="Overview"
+            title="Class Hub"
+            description="Agenda & notifications."
+          />
+          <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">Timeline</h2>
@@ -314,6 +328,7 @@ export default function HubPage() {
                 ))}
               </div>
             )}
+          </div>
           </div>
         </div>
       </Section>

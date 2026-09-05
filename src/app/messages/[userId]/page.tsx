@@ -426,11 +426,20 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
   };
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen pb-24 md:pb-8">
       <SpaceBackground particleCount={40} enableParallax={false } />
-      <Section title="" subtitle="" className="relative z-10">
-        <div className="max-w-3xl mx-auto">
-          <GlassCard className="p-6 flex flex-col h-[70vh]">
+      <Section className="relative z-10">
+        <div className="max-w-3xl mx-auto px-4 sm:px-0">
+          <div className="mb-4">
+            <button
+              onClick={() => router.back()}
+              className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors min-h-[40px] -ml-1 px-1 rounded-lg"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to messages
+            </button>
+          </div>
+          <GlassCard className="p-4 sm:p-6 flex flex-col h-[70dvh] sm:h-[70vh]">
             <div className="flex items-center gap-3 mb-4 pb-4 border-b border-white/10">
               <button
                 onClick={() => router.back()}

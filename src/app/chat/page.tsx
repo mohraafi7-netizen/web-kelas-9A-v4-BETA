@@ -5,6 +5,7 @@ import { Section } from '@/components/ui';
 import { GlassCard } from '@/components/ui';
 import { GalaxyButton } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 import { MessageCircle, Send, Users, Smile, Reply, Edit3, Trash2, Pin, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
@@ -497,10 +498,15 @@ type ReplyTo = { id: string; username: string; message: string } | null;
   }, [messages]);
 
   return (
-    <main className="min-h-screen">
-      <Section title="CLASS CHAT" subtitle="Chat and discussions with your class.">
-        <div className="max-w-3xl mx-auto">
-          <GlassCard className="p-6 flex flex-col h-[70vh]">
+    <main className="min-h-screen pb-24 md:pb-8">
+      <Section className="relative z-10">
+        <div className="max-w-3xl mx-auto px-4 sm:px-0">
+          <PageHeader
+            eyebrow="Public"
+            title="Class Chat"
+            description="Chat and discussions with your class."
+          />
+          <GlassCard className="p-4 sm:p-6 flex flex-col h-[70dvh] sm:h-[70vh]">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-slate-400" />
