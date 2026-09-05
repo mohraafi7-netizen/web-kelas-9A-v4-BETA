@@ -171,11 +171,14 @@ type ReplyTo = { id: string; username: string; message: string } | null;
   const loadMessages = React.useCallback(async () => {
     if (!profile) return;
     const supabase = createClientSupabaseBrowser();
+    // Fetch the newest messages first so the most recent send is always
+    // included after navigation. The merge below re-sorts ascending for
+    // rendering.
     const { data } = await supabase
       .from('chat_messages')
       .select('id, user_id, username, message, message_type, reply_to_id, edited_at, pinned, deleted_at, created_at')
       .is('deleted_at', null)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(50);
 
     if (data) {
