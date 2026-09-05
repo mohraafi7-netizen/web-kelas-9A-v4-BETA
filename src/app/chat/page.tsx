@@ -123,10 +123,12 @@ type ReplyTo = { id: string; username: string; message: string } | null;
   const [replyTo, setReplyTo] = React.useState<ReplyTo>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const processedRef = React.useRef<Set<string>>(new Set());
+  const [realtimeStatus, setRealtimeStatus] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
   const realtimeStatusRef = React.useRef<'connecting' | 'connected' | 'failed'>('connecting');
   const fallbackIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const currentMessageIdsRef = React.useRef<Set<string>>(new Set());
   const scrollRafRef = React.useRef<number | null>(null);
+  const channelRef = React.useRef<ReturnType<ReturnType<typeof createClientSupabaseBrowser>['channel']> | null>(null);
   const [showScrollButton, setShowScrollButton] = React.useState(false);
   const chatContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -155,6 +157,7 @@ type ReplyTo = { id: string; username: string; message: string } | null;
   }, []);
 
   const loadMessages = React.useCallback(async () => {
+    if (!profile) return;
     const supabase = createClientSupabaseBrowser();
     const { data } = await supabase
       .from('chat_messages')
@@ -164,119 +167,153 @@ type ReplyTo = { id: string; username: string; message: string } | null;
       .limit(50);
 
     if (data) {
-      const mapped: MessageWithMeta[] = (data as any[]).map((msg) => ({
-        id: msg.id,
-        user_id: msg.user_id,
-        username: msg.username,
-        message: msg.message,
-        message_type: msg.message_type,
-        reply_to_id: msg.reply_to_id,
-        edited_at: msg.edited_at,
-        pinned: msg.pinned,
-        deleted_at: msg.deleted_at,
-        created_at: msg.created_at,
-        reactions: [],
-        reply_to: msg.reply_to_id ? { username: msg.username, message: msg.message } : null,
-      }));
-      setMessages(mapped);
-      mapped.forEach((m) => processedRef.current.add(m.id));
-      currentMessageIdsRef.current = new Set(mapped.map((m) => m.id));
+      setMessages((prev) => {
+        const byId = new Map<string, MessageWithMeta>();
+        for (const m of prev) byId.set(m.id, m);
+        for (const msg of data as any[]) {
+          const existing = byId.get(msg.id);
+          byId.set(msg.id, {
+            id: msg.id,
+            user_id: msg.user_id,
+            username: msg.username,
+            message: msg.message,
+            message_type: msg.message_type,
+            reply_to_id: msg.reply_to_id,
+            edited_at: msg.edited_at,
+            pinned: msg.pinned,
+            deleted_at: msg.deleted_at,
+            created_at: msg.created_at,
+            reactions: existing?.reactions ?? [],
+            reply_to: msg.reply_to_id
+              ? (existing?.reply_to ?? { username: msg.username, message: msg.message })
+              : null,
+          });
+        }
+        const merged = Array.from(byId.values()).sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        for (const m of merged) processedRef.current.add(m.id);
+        currentMessageIdsRef.current = new Set(merged.map((m) => m.id));
+        return merged;
+      });
     }
-  }, []);
+  }, [profile]);
 
   React.useEffect(() => {
+    if (!profile) return;
     loadMessages();
 
     const supabase = createClientSupabaseBrowser();
+    const channelName = `chat-messages-${profile.id}`;
     const channel = supabase
-      .channel('chat-messages-upgraded')
+      .channel(channelName, { config: { broadcast: { self: false }, presence: { key: profile.id } } })
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'chat_messages',
         },
         async (payload: any) => {
-          const newMsg = payload.new as any;
-          if (processedRef.current.has(newMsg.id)) return;
-          if (newMsg.deleted_at) return;
+          if (payload.eventType === 'INSERT') {
+            const newMsg = payload.new as any;
+            if (processedRef.current.has(newMsg.id)) return;
+            if (newMsg.deleted_at) return;
 
-          processedRef.current.add(newMsg.id);
-          currentMessageIdsRef.current.add(newMsg.id);
+            processedRef.current.add(newMsg.id);
+            currentMessageIdsRef.current.add(newMsg.id);
 
-          const { data: reactions } = await supabase
-            .from('reactions')
-            .select('*')
-            .eq('message_id', newMsg.id);
+            const { data: reactions } = await supabase
+              .from('reactions')
+              .select('*')
+              .eq('message_id', newMsg.id);
 
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, {
-              id: newMsg.id,
-              user_id: newMsg.user_id,
-              username: newMsg.username,
-              message: newMsg.message,
-              message_type: newMsg.message_type,
-              reply_to_id: newMsg.reply_to_id,
-              edited_at: newMsg.edited_at,
-              pinned: newMsg.pinned,
-              deleted_at: newMsg.deleted_at,
-              created_at: newMsg.created_at,
-              reactions: reactions ?? [],
-              reply_to: newMsg.reply_to_id ? { id: newMsg.id, username: newMsg.username, message: newMsg.message } : null,
-            }];
-          });
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'chat_messages',
-        },
-        async (payload: { new: any }) => {
-          const updated = payload.new as any;
-          if (updated.deleted_at) {
-            setMessages((prev) => prev.map((m) => m.id === updated.id ? { ...m, deleted_at: updated.deleted_at } : m));
-            return;
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              const replyTo = newMsg.reply_to_id
+                ? prev.find((m) => m.id === newMsg.reply_to_id)
+                : null;
+              return [...prev, {
+                id: newMsg.id,
+                user_id: newMsg.user_id,
+                username: newMsg.username,
+                message: newMsg.message,
+                message_type: newMsg.message_type,
+                reply_to_id: newMsg.reply_to_id,
+                edited_at: newMsg.edited_at,
+                pinned: newMsg.pinned,
+                deleted_at: newMsg.deleted_at,
+                created_at: newMsg.created_at,
+                reactions: reactions ?? [],
+                reply_to: replyTo
+                  ? { id: replyTo.id, username: replyTo.username, message: replyTo.message }
+                  : null,
+              }];
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const updated = payload.new as any;
+            const { data: reactions } = await supabase
+              .from('reactions')
+              .select('*')
+              .eq('message_id', updated.id);
+
+            setMessages((prev) => prev.map((m) => m.id === updated.id ? {
+              ...m,
+              message: updated.message ?? m.message,
+              edited_at: updated.edited_at ?? m.edited_at,
+              pinned: updated.pinned ?? m.pinned,
+              deleted_at: updated.deleted_at ?? m.deleted_at,
+              reactions: reactions ?? m.reactions,
+            } : m));
+          } else if (payload.eventType === 'DELETE') {
+            const oldMsg = payload.old as any;
+            if (!oldMsg?.id) return;
+            setMessages((prev) => prev.filter((m) => m.id !== oldMsg.id));
+            processedRef.current.delete(oldMsg.id);
+            currentMessageIdsRef.current.delete(oldMsg.id);
           }
-
-          const { data: reactions } = await supabase
-            .from('reactions')
-            .select('*')
-            .eq('message_id', updated.id);
-
-          setMessages((prev) => prev.map((m) => m.id === updated.id ? {
-            ...m,
-            message: updated.message,
-            edited_at: updated.edited_at,
-            pinned: updated.pinned,
-            reactions: reactions ?? m.reactions,
-          } : m));
         }
       )
       .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
           realtimeStatusRef.current = 'connected';
-        } else if (status === 'CHANNEL_ERROR') {
+          setRealtimeStatus('connected');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           realtimeStatusRef.current = 'failed';
+          setRealtimeStatus('failed');
         }
       });
 
+    channelRef.current = channel;
+
     return () => {
-      supabase.removeChannel(channel);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      realtimeStatusRef.current = 'connecting';
+      setRealtimeStatus('connecting');
     };
-  }, [loadMessages]);
+  }, [loadMessages, profile]);
 
   React.useEffect(() => {
-    if (realtimeStatusRef.current !== 'failed') return;
-    fallbackIntervalRef.current = setInterval(loadMessages, 3000);
+    if (realtimeStatus !== 'failed') {
+      if (fallbackIntervalRef.current) {
+        clearInterval(fallbackIntervalRef.current);
+        fallbackIntervalRef.current = null;
+      }
+      return;
+    }
+    fallbackIntervalRef.current = setInterval(() => {
+      loadMessages();
+    }, 15000);
     return () => {
-      if (fallbackIntervalRef.current) clearInterval(fallbackIntervalRef.current);
+      if (fallbackIntervalRef.current) {
+        clearInterval(fallbackIntervalRef.current);
+        fallbackIntervalRef.current = null;
+      }
     };
-  }, [loadMessages]);
+  }, [realtimeStatus, loadMessages]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -471,8 +508,17 @@ type ReplyTo = { id: string; username: string; message: string } | null;
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-slate-400" />
-                <span className="text-xs text-slate-400">
-                  Realtime: {realtimeStatusRef.current === 'connected' ? 'Connected' : realtimeStatusRef.current === 'failed' ? 'Disconnected' : 'Connecting...'}
+                <span className="text-xs text-slate-400 inline-flex items-center gap-1.5">
+                  <span
+                    className={
+                      realtimeStatus === 'connected'
+                        ? 'w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse'
+                        : realtimeStatus === 'failed'
+                        ? 'w-1.5 h-1.5 rounded-full bg-red-400'
+                        : 'w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse'
+                    }
+                  />
+                  {realtimeStatus === 'connected' ? 'Live' : realtimeStatus === 'failed' ? 'Disconnected' : 'Connecting...'}
                 </span>
               </div>
               {replyTo && (
