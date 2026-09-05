@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, Bell, Image, FolderOpen, Camera, BarChart3, HardDrive, Home, Menu, X, ClipboardList, Calendar, MessageCircle, Megaphone, KeyRound, Settings, Shield } from 'lucide-react';
+import { LayoutDashboard, Users, Bell, Image, FolderOpen, Camera, BarChart3, HardDrive, Home, Menu, X, ClipboardList, Calendar, MessageCircle, Megaphone, KeyRound, Settings, Shield, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -35,6 +35,13 @@ const navGroups = [
     items: [
       { href: '/admin/members', label: 'Members', icon: Users, key: 'members' },
       { href: '/admin/management', label: 'User Management', icon: KeyRound, key: 'management' },
+    ],
+  },
+  {
+    label: 'Community',
+    items: [
+      { href: '/chat', label: 'Class Chat', icon: MessageCircle, key: 'chat' },
+      { href: '/messages', label: 'Messages', icon: Mail, key: 'messages' },
     ],
   },
   {
@@ -118,6 +125,32 @@ function AdminMobileNav() {
 
             {navGroups.map((group) => {
               if (group.items.length === 0) return null;
+              if (group.label === 'Community') {
+                return (
+                  <div key={group.label} className="mb-4">
+                    <h3 className="px-2 py-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{group.label}</h3>
+                    <div className="space-y-1">
+                      {group.items.map((item) => {
+                        const active = isActive(pathname, item.href, item.key);
+                        return (
+                          <button
+                            key={item.href}
+                            onClick={() => { router.push(item.href); setMoreOpen(false); }}
+                            className={cn(
+                              'w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors min-h-[44px]',
+                              active ? 'bg-galaxy-600/20 text-white' : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                            )}
+                            aria-current={active ? 'page' : undefined}
+                          >
+                            <item.icon className="w-5 h-5" />
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
               const isCurrentGroup = group.items.some((i) => isActive(pathname, i.href, i.key));
               if (isCurrentGroup) return null;
               return (
@@ -131,9 +164,10 @@ function AdminMobileNav() {
                           key={item.href}
                           onClick={() => { router.push(item.href); setMoreOpen(false); }}
                           className={cn(
-                            'w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors',
+                            'w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors min-h-[44px]',
                             active ? 'bg-galaxy-600/20 text-white' : 'text-slate-300 hover:bg-white/5 hover:text-white'
                           )}
+                          aria-current={active ? 'page' : undefined}
                         >
                           <item.icon className="w-5 h-5" />
                           {item.label}
