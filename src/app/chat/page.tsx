@@ -10,6 +10,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { useToast } from '@/components/ui';
 import { ChatReactions } from '@/components/chat/ChatReactions';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { ChatMessage, Reaction } from '@/types';
 import { isValidUuid, isTemporaryMessage } from '@/lib/utils/uuid';
@@ -117,6 +118,7 @@ export default function ChatPage() {
   const [input, setInput] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ open: boolean; id: string; loading: boolean }>({ open: false, id: '', loading: false });
 type ReplyTo = { id: string; username: string; message: string } | null;
   const [replyTo, setReplyTo] = React.useState<ReplyTo>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
@@ -362,12 +364,22 @@ type ReplyTo = { id: string; username: string; message: string } | null;
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const requestDelete = (id: string) => {
     if (isTemporaryMessage(id)) {
       showToast('error', 'Please wait for the message to save before deleting');
       return;
     }
-    if (!confirm('Delete this message?')) return;
+    setDeleteConfirm({ open: true, id, loading: false });
+  };
+
+  const cancelDelete = () => {
+    if (deleteConfirm.loading) return;
+    setDeleteConfirm({ open: false, id: '', loading: false });
+  };
+
+  const confirmDelete = async () => {
+    const { id } = deleteConfirm;
+    setDeleteConfirm((prev) => ({ ...prev, loading: true }));
     const supabase = createClientSupabaseBrowser();
     const msg = messages.find((m) => m.id === id);
     const isAdmin = profile?.role === 'admin' || profile?.role === 'main_admin';
@@ -375,6 +387,7 @@ type ReplyTo = { id: string; username: string; message: string } | null;
 
     if (!canDelete) {
       showToast('error', 'You can only delete your own messages');
+      setDeleteConfirm({ open: false, id: '', loading: false });
       return;
     }
 
@@ -390,11 +403,12 @@ type ReplyTo = { id: string; username: string; message: string } | null;
         details: error.details,
         hint: error.hint,
       });
-      showToast('error', 'Failed to delete message');
+      showToast('error', 'Gagal menghapus pesan');
     } else {
       setMessages((prev) => prev.map((m) => m.id === id ? { ...m, deleted_at: new Date().toISOString() } : m));
-      showToast('success', 'Message deleted');
+      showToast('success', 'Pesan berhasil dihapus');
     }
+    setDeleteConfirm({ open: false, id: '', loading: false });
   };
 
   const handleEdit = (msg: MessageWithMeta) => {
@@ -496,7 +510,7 @@ type ReplyTo = { id: string; username: string; message: string } | null;
                           canDelete={canDelete}
                           onReply={() => handleReply(msg)}
                           onEdit={() => handleEdit(msg)}
-                          onDelete={() => handleDelete(msg.id)}
+                          onDelete={() => requestDelete(msg.id)}
                           onToggleReaction={handleToggleReaction}
                         />
                       );
@@ -530,6 +544,18 @@ type ReplyTo = { id: string; username: string; message: string } | null;
           </GlassCard>
         </div>
       </Section>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Hapus Pesan?"
+        description="Pesan ini akan dihapus dari percakapan."
+        confirmLabel="Hapus Pesan"
+        cancelLabel="Batal"
+        loading={deleteConfirm.loading}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </main>
   );
 }

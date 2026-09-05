@@ -11,6 +11,7 @@ import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui';
 import { ChatReactions } from '@/components/chat/ChatReactions';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { PrivateMessage, Reaction } from '@/types';
 import { isValidUuid, isTemporaryMessage } from '@/lib/utils/uuid';
 
@@ -39,6 +40,7 @@ export default function PrivateChatPage({ params }: { params: Promise<{ userId: 
   const [otherUserId, setOtherUserId] = React.useState('');
   const [otherUserName, setOtherUserName] = React.useState('');
   const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ open: boolean; id: string; loading: boolean }>({ open: false, id: '', loading: false });
 type PrivateReplyTo = { id: string; sender_id: string; username: string; message: string } | null;
   const [replyTo, setReplyTo] = React.useState<PrivateReplyTo>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
@@ -239,12 +241,22 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const requestDelete = (id: string) => {
     if (isTemporaryMessage(id)) {
       showToast('error', 'Please wait for the message to save before deleting');
       return;
     }
-    if (!confirm('Delete this message?')) return;
+    setDeleteConfirm({ open: true, id, loading: false });
+  };
+
+  const cancelDelete = () => {
+    if (deleteConfirm.loading) return;
+    setDeleteConfirm({ open: false, id: '', loading: false });
+  };
+
+  const confirmDelete = async () => {
+    const { id } = deleteConfirm;
+    setDeleteConfirm((prev) => ({ ...prev, loading: true }));
     const supabase = createClientSupabaseBrowser();
     const msg = messages.find((m) => m.id === id);
     const isAdmin = profile?.role === 'admin' || profile?.role === 'main_admin';
@@ -252,6 +264,7 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
 
     if (!canDelete) {
       showToast('error', 'You can only delete your own messages');
+      setDeleteConfirm({ open: false, id: '', loading: false });
       return;
     }
 
@@ -261,11 +274,18 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
       .eq('id', id);
 
     if (error) {
-      showToast('error', 'Failed to delete message');
+      console.error('[PRIVATE CHAT DELETE ERROR]', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
+      showToast('error', 'Gagal menghapus pesan');
     } else {
       setMessages((prev) => prev.map((m) => m.id === id ? { ...m, deleted_at: new Date().toISOString() } : m));
-      showToast('success', 'Message deleted');
+      showToast('success', 'Pesan berhasil dihapus');
     }
+    setDeleteConfirm({ open: false, id: '', loading: false });
   };
 
   const handleEdit = (msg: PrivateMessageWithMeta) => {
@@ -379,13 +399,13 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
                                 <button onClick={() => handleEdit(msg)} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-white" title="Edit">
                                   <Edit3 className="w-3 h-3" />
                                 </button>
-                                <button onClick={() => handleDelete(msg.id)} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-red-400" title="Delete">
+                                <button onClick={() => requestDelete(msg.id)} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-red-400" title="Delete">
                                   <Trash2 className="w-3 h-3" />
                                 </button>
                               </>
                             )}
                             {canDelete && !isOwn && (
-                              <button onClick={() => handleDelete(msg.id)} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-red-400" title="Delete message">
+                              <button onClick={() => requestDelete(msg.id)} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-red-400" title="Delete message">
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
@@ -423,6 +443,18 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
           </GlassCard>
         </div>
       </Section>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Hapus Pesan?"
+        description="Pesan ini akan dihapus dari percakapan."
+        confirmLabel="Hapus Pesan"
+        cancelLabel="Batal"
+        loading={deleteConfirm.loading}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </main>
   );
 }
