@@ -46,7 +46,6 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const processedRef = React.useRef<Set<string>>(new Set());
   const [realtimeStatus, setRealtimeStatus] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
-  const realtimeStatusRef = React.useRef<'connecting' | 'connected' | 'failed'>('connecting');
   const fallbackIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const channelRef = React.useRef<ReturnType<ReturnType<typeof createClientSupabaseBrowser>['channel']> | null>(null);
 
@@ -122,7 +121,6 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
     fetchOtherUser();
 
     const channelName = `private-chat-${profile.id}-${otherUserId}`;
-    const filterExpr = `or(and(sender_id.eq.${profile.id},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${profile.id}))`;
     const channel = supabase
       .channel(channelName, { config: { broadcast: { self: false }, presence: { key: profile.id } } })
       .on(
@@ -131,11 +129,14 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
           event: '*',
           schema: 'public',
           table: 'private_messages',
-          filter: filterExpr,
         },
         async (payload: any) => {
           if (payload.eventType === 'INSERT') {
             const newMsg = payload.new as any;
+            const isRelevant =
+              (newMsg.sender_id === profile.id && newMsg.receiver_id === otherUserId) ||
+              (newMsg.sender_id === otherUserId && newMsg.receiver_id === profile.id);
+            if (!isRelevant) return;
             if (processedRef.current.has(newMsg.id)) return;
             if (newMsg.deleted_at) return;
 
@@ -160,6 +161,10 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
             });
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as any;
+            const isRelevant =
+              (updated.sender_id === profile.id && updated.receiver_id === otherUserId) ||
+              (updated.sender_id === otherUserId && updated.receiver_id === profile.id);
+            if (!isRelevant) return;
             const { data: reactions } = await supabase
               .from('reactions')
               .select('*')
@@ -180,10 +185,8 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
       )
       .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
-          realtimeStatusRef.current = 'connected';
           setRealtimeStatus('connected');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          realtimeStatusRef.current = 'failed';
           setRealtimeStatus('failed');
         }
       });
@@ -195,7 +198,6 @@ type PrivateReplyTo = { id: string; sender_id: string; username: string; message
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
-      realtimeStatusRef.current = 'connecting';
       setRealtimeStatus('connecting');
     };
   }, [otherUserId, profile?.id, profile?.name, otherUserName]);

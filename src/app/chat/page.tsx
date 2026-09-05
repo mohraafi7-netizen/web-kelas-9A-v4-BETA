@@ -124,7 +124,6 @@ type ReplyTo = { id: string; username: string; message: string } | null;
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const processedRef = React.useRef<Set<string>>(new Set());
   const [realtimeStatus, setRealtimeStatus] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
-  const realtimeStatusRef = React.useRef<'connecting' | 'connected' | 'failed'>('connecting');
   const fallbackIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const currentMessageIdsRef = React.useRef<Set<string>>(new Set());
   const scrollRafRef = React.useRef<number | null>(null);
@@ -276,10 +275,8 @@ type ReplyTo = { id: string; username: string; message: string } | null;
       )
       .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
-          realtimeStatusRef.current = 'connected';
           setRealtimeStatus('connected');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          realtimeStatusRef.current = 'failed';
           setRealtimeStatus('failed');
         }
       });
@@ -291,7 +288,6 @@ type ReplyTo = { id: string; username: string; message: string } | null;
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
-      realtimeStatusRef.current = 'connecting';
       setRealtimeStatus('connecting');
     };
   }, [loadMessages, profile]);
