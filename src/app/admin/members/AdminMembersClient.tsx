@@ -6,19 +6,23 @@ import { AdminLayout } from '@/components/admin/AdminLayout';
 import { GlassCard } from '@/components/ui';
 import { Button } from '@/components/ui';
 import { Modal } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Loading } from '@/components/ui';
 import { ErrorState } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
+import { useToast } from '@/components/ui';
 import { Plus, Pencil, Trash2, X, Users } from 'lucide-react';
 import type { Profile } from '@/types';
 
 function AdminMembersClient() {
+  const { showToast } = useToast();
   const [members, setMembers] = React.useState<Profile[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingMember, setEditingMember] = React.useState<Profile | null>(null);
   const [formData, setFormData] = React.useState({ name: '', role: '', attendance_number: '' });
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ open: boolean; id: string; name: string; loading: boolean }>({ open: false, id: '', name: '', loading: false });
 
   const fetchMembers = async () => {
     setLoading(true);
@@ -74,11 +78,27 @@ function AdminMembersClient() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this member?')) return;
+  const requestDelete = (id: string, name: string) => {
+    setDeleteConfirm({ open: true, id, name, loading: false });
+  };
+
+  const cancelDelete = () => {
+    if (deleteConfirm.loading) return;
+    setDeleteConfirm({ open: false, id: '', name: '', loading: false });
+  };
+
+  const confirmDelete = async () => {
+    setDeleteConfirm((prev) => ({ ...prev, loading: true }));
     const supabase = createClientSupabaseBrowser();
-    await supabase.from('profiles').delete().eq('id', id);
-    fetchMembers();
+    const { error } = await supabase.from('profiles').delete().eq('id', deleteConfirm.id);
+    if (error) {
+      console.error('[MEMBER DELETE ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
+      showToast('error', 'Gagal menghapus member');
+    } else {
+      showToast('success', 'Member berhasil dihapus');
+      fetchMembers();
+    }
+    setDeleteConfirm({ open: false, id: '', name: '', loading: false });
   };
 
   const openAddModal = () => {
@@ -120,7 +140,7 @@ function AdminMembersClient() {
                 <Button variant="ghost" size="sm" onClick={() => handleEdit(member)}>
                   <Pencil className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => handleDelete(member.id)}>
+                <Button variant="ghost" size="sm" onClick={() => requestDelete(member.id, member.name)}>
                   <Trash2 className="w-4 h-4 text-red-400" />
                 </Button>
               </div>
@@ -171,6 +191,18 @@ function AdminMembersClient() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Hapus Member?"
+        description={`Member "${deleteConfirm.name}" akan dihapus dari kelas.`}
+        confirmLabel="Hapus"
+        cancelLabel="Batal"
+        loading={deleteConfirm.loading}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </AdminLayout>
   );
 }

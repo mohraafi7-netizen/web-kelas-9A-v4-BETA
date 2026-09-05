@@ -6,6 +6,7 @@ import { Button } from '@/components/ui';
 import { Loading } from '@/components/ui';
 import { ErrorState } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { storage } from '@/lib/storage';
@@ -25,6 +26,7 @@ function AdminStorageClient() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<string>('all');
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ open: boolean; file: StorageFile | null; loading: boolean }>({ open: false, file: null, loading: false });
 
   const fetchFiles = async () => {
     setLoading(true);
@@ -65,16 +67,29 @@ function AdminStorageClient() {
     fetchFiles();
   }, []);
 
-  const handleDelete = async (file: StorageFile) => {
-    if (!confirm(`Delete ${file.name}?`)) return;
+  const requestDelete = (file: StorageFile) => {
+    setDeleteConfirm({ open: true, file, loading: false });
+  };
+
+  const cancelDelete = () => {
+    if (deleteConfirm.loading) return;
+    setDeleteConfirm({ open: false, file: null, loading: false });
+  };
+
+  const confirmDelete = async () => {
+    const file = deleteConfirm.file;
+    if (!file) return;
+    setDeleteConfirm((prev) => ({ ...prev, loading: true }));
     try {
       const supabase = createClientSupabaseBrowser();
       const { error } = await supabase.storage.from(file.bucket).remove([file.name]);
       if (error) throw error;
-      showToast('success', 'File deleted');
+      showToast('success', 'File berhasil dihapus');
       fetchFiles();
     } catch {
-      showToast('error', 'Failed to delete file');
+      showToast('error', 'Gagal menghapus file');
+    } finally {
+      setDeleteConfirm({ open: false, file: null, loading: false });
     }
   };
 
@@ -89,6 +104,7 @@ function AdminStorageClient() {
   if (error) return <ErrorState title="Error" message={error} onRetry={fetchFiles} />;
 
   return (
+    <>
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-white mb-2">Storage Manager</h1>
@@ -152,7 +168,7 @@ function AdminStorageClient() {
                   {file.bucket} • {storage.formatFileSize(file.size)} • {new Date(file.created_at).toLocaleDateString()}
                 </p>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => handleDelete(file)}>
+              <Button variant="ghost" size="sm" onClick={() => requestDelete(file)}>
                 <Trash2 className="w-4 h-4 text-red-400" />
               </Button>
             </GlassCard>
@@ -160,6 +176,19 @@ function AdminStorageClient() {
         </div>
       )}
     </div>
+
+    <ConfirmDialog
+      open={deleteConfirm.open}
+      title="Hapus File?"
+      description={`File "${deleteConfirm.file?.name}" akan dihapus dari storage.`}
+      confirmLabel="Hapus"
+      cancelLabel="Batal"
+      loading={deleteConfirm.loading}
+      variant="danger"
+      onConfirm={confirmDelete}
+      onCancel={cancelDelete}
+    />
+    </>
   );
 }
 

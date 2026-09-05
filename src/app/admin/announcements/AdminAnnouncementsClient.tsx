@@ -6,6 +6,7 @@ import { AdminLayout } from '@/components/admin/AdminLayout';
 import { GlassCard } from '@/components/ui';
 import { Button } from '@/components/ui';
 import { Modal } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Loading } from '@/components/ui';
 import { ErrorState } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
@@ -27,6 +28,7 @@ function AdminAnnouncementsClient() {
   const [uploading, setUploading] = React.useState(false);
   const [pendingFiles, setPendingFiles] = React.useState<File[]>([]);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ open: boolean; id: string; title: string; loading: boolean }>({ open: false, id: '', title: '', loading: false });
 
   const fetchData = React.useCallback(async () => {
     setLoading(true);
@@ -149,24 +151,35 @@ function AdminAnnouncementsClient() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this announcement?')) return;
+  const requestDelete = (id: string, title: string) => {
+    setDeleteConfirm({ open: true, id, title, loading: false });
+  };
+
+  const cancelDelete = () => {
+    if (deleteConfirm.loading) return;
+    setDeleteConfirm({ open: false, id: '', title: '', loading: false });
+  };
+
+  const confirmDelete = async () => {
+    const { id } = deleteConfirm;
+    setDeleteConfirm((prev) => ({ ...prev, loading: true }));
     setDeletingId(id);
     try {
       const supabase = createClientSupabaseBrowser();
       const { error } = await supabase.from('announcements').delete().eq('id', id);
       if (error) {
         console.error('[ANNOUNCEMENT DELETE ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
-        showToast('error', 'Failed to delete announcement');
+        showToast('error', 'Gagal menghapus pengumuman');
       } else {
-        showToast('success', 'Announcement deleted');
+        showToast('success', 'Pengumuman berhasil dihapus');
         fetchData();
       }
     } catch (err) {
       console.error('[ANNOUNCEMENT DELETE EXCEPTION]', err);
-      showToast('error', 'Failed to delete announcement');
+      showToast('error', 'Gagal menghapus pengumuman');
     } finally {
       setDeletingId(null);
+      setDeleteConfirm({ open: false, id: '', title: '', loading: false });
     }
   };
 
@@ -234,7 +247,7 @@ function AdminAnnouncementsClient() {
                   <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
                     <Pencil className="w-4 h-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)} disabled={deletingId === item.id}>
+                  <Button variant="ghost" size="sm" onClick={() => requestDelete(item.id, item.title)} disabled={deletingId === item.id}>
                     <Trash2 className="w-4 h-4 text-red-400" />
                   </Button>
                 </div>
@@ -311,6 +324,18 @@ function AdminAnnouncementsClient() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Hapus Pengumuman?"
+        description={`Pengumuman "${deleteConfirm.title}" akan dihapus.`}
+        confirmLabel="Hapus"
+        cancelLabel="Batal"
+        loading={deleteConfirm.loading}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </AdminLayout>
   );
 }

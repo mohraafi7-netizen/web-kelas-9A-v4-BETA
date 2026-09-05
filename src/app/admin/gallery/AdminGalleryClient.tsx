@@ -6,6 +6,7 @@ import { AdminLayout } from '@/components/admin/AdminLayout';
 import { GlassCard } from '@/components/ui';
 import { Button } from '@/components/ui';
 import { Modal } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Loading } from '@/components/ui';
 import { ErrorState } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
@@ -26,6 +27,7 @@ function AdminGalleryClient() {
   const [uploading, setUploading] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ open: boolean; id: string; title: string; loading: boolean }>({ open: false, id: '', title: '', loading: false });
 
   const fetchData = async () => {
     setLoading(true);
@@ -161,8 +163,18 @@ function AdminGalleryClient() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this item?')) return;
+  const requestDelete = (id: string, title: string) => {
+    setDeleteConfirm({ open: true, id, title, loading: false });
+  };
+
+  const cancelDelete = () => {
+    if (deleteConfirm.loading) return;
+    setDeleteConfirm({ open: false, id: '', title: '', loading: false });
+  };
+
+  const confirmDelete = async () => {
+    const { id } = deleteConfirm;
+    setDeleteConfirm((prev) => ({ ...prev, loading: true }));
     setDeletingId(id);
     try {
       const supabase = createClientSupabaseBrowser();
@@ -178,16 +190,17 @@ function AdminGalleryClient() {
           details: error.details,
           hint: error.hint,
         });
-        showToast('error', 'Failed to delete gallery item');
+        showToast('error', 'Gagal menghapus item galeri');
       } else {
-        showToast('success', 'Gallery item deleted');
+        showToast('success', 'Item galeri berhasil dihapus');
         fetchData();
       }
     } catch (err) {
       console.error('[GALLERY DELETE EXCEPTION]', err);
-      showToast('error', 'Failed to delete gallery item');
+      showToast('error', 'Gagal menghapus item galeri');
     } finally {
       setDeletingId(null);
+      setDeleteConfirm({ open: false, id: '', title: '', loading: false });
     }
   };
 
@@ -242,7 +255,7 @@ function AdminGalleryClient() {
                   <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
                     <Pencil className="w-4 h-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)} disabled={deletingId === item.id}>
+                  <Button variant="ghost" size="sm" onClick={() => requestDelete(item.id, item.title)} disabled={deletingId === item.id}>
                     <Trash2 className="w-4 h-4 text-red-400" />
                   </Button>
                 </div>
@@ -305,6 +318,18 @@ function AdminGalleryClient() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Hapus Item Galeri?"
+        description={`"${deleteConfirm.title}" akan dihapus dari galeri.`}
+        confirmLabel="Hapus"
+        cancelLabel="Batal"
+        loading={deleteConfirm.loading}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </AdminLayout>
   );
 }

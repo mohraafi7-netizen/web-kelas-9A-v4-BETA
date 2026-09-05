@@ -5,6 +5,7 @@ import { AdminLayout } from '@/components/admin/AdminLayout';
 import { GlassCard } from '@/components/ui';
 import { Button } from '@/components/ui';
 import { Modal } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Loading } from '@/components/ui';
 import { ErrorState } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
@@ -28,6 +29,7 @@ function AdminPollsClient() {
   const [submitting, setSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [togglingId, setTogglingId] = React.useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ open: boolean; id: string; title: string; loading: boolean }>({ open: false, id: '', title: '', loading: false });
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'main_admin';
 
@@ -170,8 +172,18 @@ function AdminPollsClient() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Hapus polling ini?')) return;
+  const requestDelete = (id: string, title: string) => {
+    setDeleteConfirm({ open: true, id, title, loading: false });
+  };
+
+  const cancelDelete = () => {
+    if (deleteConfirm.loading) return;
+    setDeleteConfirm({ open: false, id: '', title: '', loading: false });
+  };
+
+  const confirmDelete = async () => {
+    const { id } = deleteConfirm;
+    setDeleteConfirm((prev) => ({ ...prev, loading: true }));
     setDeletingId(id);
     try {
       const supabase = createClientSupabaseBrowser();
@@ -193,6 +205,7 @@ function AdminPollsClient() {
       showToast('error', 'Gagal menghapus polling');
     } finally {
       setDeletingId(null);
+      setDeleteConfirm({ open: false, id: '', title: '', loading: false });
     }
   };
 
@@ -282,7 +295,7 @@ function AdminPollsClient() {
                       <Button variant="ghost" size="sm" onClick={() => openEditModal(poll)}>
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(poll.id)} disabled={deletingId === poll.id}>
+                      <Button variant="ghost" size="sm" onClick={() => requestDelete(poll.id, poll.title)} disabled={deletingId === poll.id}>
                         <Trash2 className="w-4 h-4 text-red-400" />
                       </Button>
                     </div>
@@ -403,6 +416,18 @@ function AdminPollsClient() {
             </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Hapus Polling?"
+        description={`Polling "${deleteConfirm.title}" akan dihapus dan tidak dapat dikembalikan.`}
+        confirmLabel="Hapus"
+        cancelLabel="Batal"
+        loading={deleteConfirm.loading}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { AdminLayout } from '@/components/admin/AdminLayout';
 import { GlassCard } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
 import { GalaxyButton } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { storage } from '@/lib/storage';
@@ -22,6 +23,7 @@ function AdminPhotosClient() {
   const [search, setSearch] = React.useState('');
   const [filter, setFilter] = React.useState<'all' | 'with' | 'without'>('all');
   const [previews, setPreviews] = React.useState<Record<string, string>>({});
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ open: boolean; id: string; name: string; loading: boolean }>({ open: false, id: '', name: '', loading: false });
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'main_admin';
 
@@ -138,8 +140,18 @@ function AdminPhotosClient() {
     }
   };
 
-  const handleDelete = async (profileId: string) => {
-    if (!confirm('Hapus foto siswa ini?')) return;
+  const requestDelete = (profileId: string, name: string) => {
+    setDeleteConfirm({ open: true, id: profileId, name, loading: false });
+  };
+
+  const cancelDelete = () => {
+    if (deleteConfirm.loading) return;
+    setDeleteConfirm({ open: false, id: '', name: '', loading: false });
+  };
+
+  const confirmDelete = async () => {
+    const profileId = deleteConfirm.id;
+    setDeleteConfirm((prev) => ({ ...prev, loading: true }));
 
     try {
       const supabase = createClientSupabaseBrowser();
@@ -195,6 +207,8 @@ function AdminPhotosClient() {
     } catch (error) {
       console.error('[PHOTO DELETE EXCEPTION]', error);
       showToast('error', 'Gagal menghapus foto');
+    } finally {
+      setDeleteConfirm({ open: false, id: '', name: '', loading: false });
     }
   };
 
@@ -336,7 +350,7 @@ function AdminPhotosClient() {
                     {photoSrc && (
                       <button
                         type="button"
-                        onClick={() => handleDelete(profile.id)}
+                        onClick={() => requestDelete(profile.id, profile.name)}
                         className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs transition-colors"
                       >
                         <Trash2 className="w-3 h-3" />
@@ -368,6 +382,18 @@ function AdminPhotosClient() {
           <p className="text-xs text-slate-400">Belum ada foto</p>
         </GlassCard>
       </div>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Hapus Foto Siswa?"
+        description={`Foto "${deleteConfirm.name}" akan dihapus.`}
+        confirmLabel="Hapus"
+        cancelLabel="Batal"
+        loading={deleteConfirm.loading}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </div>
   );
 }

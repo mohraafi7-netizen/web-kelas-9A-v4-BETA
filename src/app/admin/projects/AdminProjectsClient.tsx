@@ -6,6 +6,7 @@ import { AdminLayout } from '@/components/admin/AdminLayout';
 import { GlassCard } from '@/components/ui';
 import { Button } from '@/components/ui';
 import { Modal } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Loading } from '@/components/ui';
 import { ErrorState } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
@@ -26,6 +27,7 @@ function AdminProjectsClient() {
   const [attachments, setAttachments] = React.useState<ProjectAttachment[]>([]);
   const [uploading, setUploading] = React.useState(false);
   const [pendingFiles, setPendingFiles] = React.useState<File[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ open: boolean; id: string; title: string; loading: boolean }>({ open: false, id: '', title: '', loading: false });
 
   const fetchData = async () => {
     setLoading(true);
@@ -153,21 +155,32 @@ function AdminProjectsClient() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this project?')) return;
+  const requestDelete = (id: string, title: string) => {
+    setDeleteConfirm({ open: true, id, title, loading: false });
+  };
+
+  const cancelDelete = () => {
+    if (deleteConfirm.loading) return;
+    setDeleteConfirm({ open: false, id: '', title: '', loading: false });
+  };
+
+  const confirmDelete = async () => {
+    setDeleteConfirm((prev) => ({ ...prev, loading: true }));
     try {
       const supabase = createClientSupabaseBrowser();
-      const { error } = await supabase.from('projects').delete().eq('id', id);
+      const { error } = await supabase.from('projects').delete().eq('id', deleteConfirm.id);
       if (error) {
         console.error('[PROJECT DELETE ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
-        showToast('error', 'Failed to delete project');
+        showToast('error', 'Gagal menghapus project');
       } else {
-        showToast('success', 'Project deleted');
+        showToast('success', 'Project berhasil dihapus');
         fetchData();
       }
     } catch (err) {
       console.error('[PROJECT DELETE EXCEPTION]', err);
-      showToast('error', 'Failed to delete project');
+      showToast('error', 'Gagal menghapus project');
+    } finally {
+      setDeleteConfirm({ open: false, id: '', title: '', loading: false });
     }
   };
 
@@ -235,7 +248,7 @@ function AdminProjectsClient() {
                   <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
                     <Pencil className="w-4 h-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => requestDelete(item.id, item.title)}>
                     <Trash2 className="w-4 h-4 text-red-400" />
                   </Button>
                 </div>
@@ -330,6 +343,18 @@ function AdminProjectsClient() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Hapus Project?"
+        description={`Project "${deleteConfirm.title}" akan dihapus dan tidak dapat dikembalikan.`}
+        confirmLabel="Hapus"
+        cancelLabel="Batal"
+        loading={deleteConfirm.loading}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </AdminLayout>
   );
 }

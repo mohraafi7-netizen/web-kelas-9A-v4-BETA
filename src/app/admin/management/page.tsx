@@ -6,6 +6,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { Section } from '@/components/ui';
 import { GlassCard } from '@/components/ui';
 import { Button } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { UserPlus, Shield, Trash2, KeyRound } from 'lucide-react';
 import { useToast } from '@/components/ui';
 
@@ -23,6 +24,7 @@ function AdminManagement() {
   const [loading, setLoading] = React.useState(true);
   const [resettingId, setResettingId] = React.useState<string | null>(null);
   const [passwordForm, setPasswordForm] = React.useState<{ [key: string]: { password: string; confirm: string; show: boolean } }>({});
+  const [resetConfirm, setResetConfirm] = React.useState<{ open: boolean; userId: string; name: string; loading: boolean }>({ open: false, userId: '', name: '', loading: false });
 
   React.useEffect(() => {
     if (profile?.role !== 'main_admin') return;
@@ -45,7 +47,7 @@ function AdminManagement() {
     setProfiles(prev => prev.map(p => p.id === userId ? { ...p, role: newRole } : p));
   };
 
-  const handlePasswordReset = async (userId: string) => {
+  const requestPasswordReset = (userId: string, name: string) => {
     const form = passwordForm[userId];
     if (!form) return;
 
@@ -59,26 +61,40 @@ function AdminManagement() {
       return;
     }
 
+    setResetConfirm({ open: true, userId, name, loading: false });
+  };
+
+  const cancelPasswordReset = () => {
+    if (resetConfirm.loading) return;
+    setResetConfirm({ open: false, userId: '', name: '', loading: false });
+  };
+
+  const confirmPasswordReset = async () => {
+    const { userId } = resetConfirm;
+    setResetConfirm((prev) => ({ ...prev, loading: true }));
+    const form = passwordForm[userId];
     setResettingId(userId);
     try {
       const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: form.password }),
+        body: JSON.stringify({ password: form?.password ?? '' }),
       });
 
       const data = await res.json();
       if (!res.ok) {
         showToast('error', data.error || 'Failed to reset password');
+        setResetConfirm({ open: false, userId: '', name: '', loading: false });
         return;
       }
 
-      showToast('success', 'Password reset successfully');
+      showToast('success', 'Password berhasil diubah');
       setPasswordForm(prev => ({ ...prev, [userId]: { password: '', confirm: '', show: false } }));
     } catch {
       showToast('error', 'Failed to reset password');
     } finally {
       setResettingId(null);
+      setResetConfirm({ open: false, userId: '', name: '', loading: false });
     }
   };
 
@@ -173,7 +189,7 @@ function AdminManagement() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => handlePasswordReset(p.id)}
+                      onClick={() => requestPasswordReset(p.id, p.name)}
                       disabled={isResetting || !form.password || !form.confirm}
                       className="gap-1.5"
                     >
@@ -187,6 +203,18 @@ function AdminManagement() {
           </div>
         )}
       </GlassCard>
+
+      <ConfirmDialog
+        open={resetConfirm.open}
+        title="Ubah Password?"
+        description={`Password akun "${resetConfirm.name}" akan diganti dengan password baru.`}
+        confirmLabel="Ubah Password"
+        cancelLabel="Batal"
+        loading={resetConfirm.loading}
+        variant="warning"
+        onConfirm={confirmPasswordReset}
+        onCancel={cancelPasswordReset}
+      />
     </div>
   );
 }

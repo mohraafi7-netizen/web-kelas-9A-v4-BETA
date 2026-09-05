@@ -5,6 +5,7 @@ import { AdminLayout } from '@/components/admin/AdminLayout';
 import { GlassCard } from '@/components/ui';
 import { Button } from '@/components/ui';
 import { Modal } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Loading } from '@/components/ui';
 import { ErrorState } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
@@ -38,6 +39,7 @@ function AdminScheduleClient() {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingItem, setEditingItem] = React.useState<ScheduleItem | null>(null);
   const [formData, setFormData] = React.useState({ day: 'Monday', time_start: '', time_end: '', subject: '', teacher: '', room: '' });
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ open: boolean; id: string; subject: string; loading: boolean }>({ open: false, id: '', subject: '', loading: false });
   const { showToast } = useToast();
 
   const fetchData = React.useCallback(async () => {
@@ -148,20 +150,31 @@ function AdminScheduleClient() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this schedule item?')) return;
+  const requestDelete = (id: string, subject: string) => {
+    setDeleteConfirm({ open: true, id, subject, loading: false });
+  };
+
+  const cancelDelete = () => {
+    if (deleteConfirm.loading) return;
+    setDeleteConfirm({ open: false, id: '', subject: '', loading: false });
+  };
+
+  const confirmDelete = async () => {
+    setDeleteConfirm((prev) => ({ ...prev, loading: true }));
     try {
       const supabase = createClientSupabaseBrowser();
-      const { error } = await supabase.from('schedule').delete().eq('id', id);
+      const { error } = await supabase.from('schedule').delete().eq('id', deleteConfirm.id);
       if (error) {
         console.error('[SCHEDULE DELETE ERROR]', { message: error.message, code: error.code, details: error.details, hint: error.hint });
-        showToast('error', 'Failed to delete');
+        showToast('error', 'Gagal menghapus jadwal');
       } else {
-        showToast('success', 'Schedule deleted');
+        showToast('success', 'Jadwal berhasil dihapus');
       }
     } catch (err) {
       console.error('[SCHEDULE DELETE EXCEPTION]', err);
-      showToast('error', 'Failed to delete');
+      showToast('error', 'Gagal menghapus jadwal');
+    } finally {
+      setDeleteConfirm({ open: false, id: '', subject: '', loading: false });
     }
   };
 
@@ -221,7 +234,7 @@ function AdminScheduleClient() {
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)}>
+                        <Button variant="ghost" size="sm" onClick={() => requestDelete(item.id, item.subject)}>
                           <Trash2 className="w-3.5 h-3.5 text-red-400" />
                         </Button>
                       </div>
@@ -313,6 +326,18 @@ function AdminScheduleClient() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Hapus Jadwal?"
+        description={`Jadwal "${deleteConfirm.subject}" akan dihapus.`}
+        confirmLabel="Hapus"
+        cancelLabel="Batal"
+        loading={deleteConfirm.loading}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </AdminLayout>
   );
 }

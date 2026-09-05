@@ -8,6 +8,7 @@ import { GalaxyBadge } from '@/components/ui';
 import { GalaxyGlow } from '@/components/ui';
 import { SpaceBackground } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/providers/AuthProvider';
 import { useToast } from '@/components/ui/Toast';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
@@ -85,6 +86,7 @@ export default function DutyPage() {
   const [loading, setLoading] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
   const [deletingPiketId, setDeletingPiketId] = React.useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ open: boolean; id: string; loading: boolean }>({ open: false, id: '', loading: false });
   const [showCreate, setShowCreate] = React.useState(false);
   const [form, setForm] = React.useState({ date: '', day: 'Monday', student_name: '', task: '' });
 
@@ -180,12 +182,21 @@ export default function DutyPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this duty assignment?')) return;
-    setDeletingPiketId(id);
+  const requestDelete = (id: string) => {
+    setDeleteConfirm({ open: true, id, loading: false });
+  };
+
+  const cancelDelete = () => {
+    if (deleteConfirm.loading) return;
+    setDeleteConfirm({ open: false, id: '', loading: false });
+  };
+
+  const confirmDelete = async () => {
+    setDeleteConfirm((prev) => ({ ...prev, loading: true }));
+    setDeletingPiketId(deleteConfirm.id);
     try {
       const supabase = createClientSupabaseBrowser();
-      const { error } = await supabase.from('piket').delete().eq('id', id);
+      const { error } = await supabase.from('piket').delete().eq('id', deleteConfirm.id);
       if (error) {
         console.error('[PIKET DELETE ERROR]', {
           message: error.message,
@@ -193,16 +204,17 @@ export default function DutyPage() {
           details: error.details,
           hint: error.hint,
         });
-        showToast('error', 'Failed to delete piket');
+        showToast('error', 'Gagal menghapus piket');
       } else {
-        showToast('success', 'Piket deleted');
+        showToast('success', 'Piket berhasil dihapus');
         fetchPiket();
       }
     } catch (err) {
       console.error('[PIKET DELETE EXCEPTION]', err);
-      showToast('error', 'Failed to delete piket');
+      showToast('error', 'Gagal menghapus piket');
     } finally {
       setDeletingPiketId(null);
+      setDeleteConfirm({ open: false, id: '', loading: false });
     }
   };
 
@@ -237,7 +249,7 @@ export default function DutyPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {piketList.filter(p => p.day === todayKey).map((p) => (
-                      <DutyCard key={p.id} piket={p} isToday={true} onDelete={handleDelete} canEdit={canEdit} members={members} deletingId={deletingPiketId} />
+                      <DutyCard key={p.id} piket={p} isToday={true} onDelete={requestDelete} canEdit={canEdit} members={members} deletingId={deletingPiketId} />
                     ))}
                 </div>
               </GlassCard>
@@ -352,7 +364,7 @@ export default function DutyPage() {
                           key={piket.id}
                           piket={piket}
                           isToday={day.key === todayKey}
-                          onDelete={handleDelete}
+                          onDelete={requestDelete}
                           canEdit={canEdit}
                           members={members}
                           deletingId={deletingPiketId}
@@ -366,6 +378,18 @@ export default function DutyPage() {
           )}
         </div>
       </Section>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Hapus Piket?"
+        description="Penugasan piket ini akan dihapus dari jadwal."
+        confirmLabel="Hapus"
+        cancelLabel="Batal"
+        loading={deleteConfirm.loading}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </main>
   );
 }
