@@ -12,10 +12,20 @@ import { Users } from 'lucide-react';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { MEMBERS_DATA } from '@/data/members';
 import type { Profile } from '@/types';
+import { PresenceProvider } from '@/hooks/usePresence';
 
 export default function MembersPage() {
+  return (
+    <PresenceProvider>
+      <MembersPageContent />
+    </PresenceProvider>
+  );
+}
+
+function MembersPageContent() {
   const [members, setMembers] = React.useState<Profile[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const channelRef = React.useRef<ReturnType<ReturnType<typeof createClientSupabaseBrowser>['channel']> | null>(null);
 
   React.useEffect(() => {
     const supabase = createClientSupabaseBrowser();
@@ -43,9 +53,17 @@ export default function MembersPage() {
         fetchMembers();
       })
       .subscribe();
+    channelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channelRef.current) {
+        try {
+          supabase.removeChannel(channelRef.current);
+        } catch (err) {
+          console.warn('[Members] channel cleanup error (non-fatal):', err);
+        }
+        channelRef.current = null;
+      }
     };
   }, []);
 
