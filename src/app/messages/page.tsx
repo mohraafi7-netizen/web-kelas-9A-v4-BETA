@@ -6,12 +6,13 @@ import { GlassCard } from '@/components/ui';
 import { EmptyState } from '@/components/ui';
 import { GalaxyButton } from '@/components/ui';
 import { SpaceBackground } from '@/components/ui';
-import { Mail, Search, Plus, MessageCircle } from 'lucide-react';
+import { Search, Plus, MessageCircle, AlertCircle, Inbox } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { createClientSupabaseBrowser } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { NewMessageDialog } from '@/components/messages/NewMessageDialog';
+
+type ProfileMeta = { name: string; photo_path: string | null; photo_url: string | null };
 
 type Conversation = {
   userId: string;
@@ -47,31 +48,173 @@ function formatRelative(ts: string) {
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
+function sortConversations(list: Conversation[]) {
+  return [...list].sort(
+    (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+  );
+}
+
 export default function MessagesPage() {
   const { profile } = useAuth();
   const router = useRouter();
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const [profileNames, setProfileNames] = React.useState<Record<string, ProfileMeta>>({});
+  const [initialLoading, setInitialLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState('');
   const [realtimeStatus, setRealtimeStatus] = React.useState<'connecting' | 'connected' | 'failed'>('connecting');
   const [pickerOpen, setPickerOpen] = React.useState(false);
-  const [profileNames, setProfileNames] = React.useState<Record<string, { name: string; photo_path: string | null; photo_url: string | null }>>({});
   const channelRef = React.useRef<ReturnType<ReturnType<typeof createClientSupabaseBrowser>['channel']> | null>(null);
+
+  const mergeProfileMeta = React.useCallback((meta: Record<string, ProfileMeta>) => {
+    setProfileNames((prev) => {
+      let changed = false;
+      const next: Record<string, ProfileMeta> = { ...prev };
+      for (const [id, m] of Object.entries(meta)) {
+        const cur = next[id];
+        if (!cur || cur.name !== m.name || cur.photo_path !== m.photo_path || cur.photo_url !== m.photo_url) {
+          next[id] = m;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const applyConversationsFromMessages = React.useCallback(
+    (rows: Array<{ id: string; sender_id: string; receiver_id: string; message: string; created_at: string; deleted_at: string | null }>) => {
+      if (!profile?.id) return;
+      const map = new Map<string, Conversation>();
+      const otherIds: string[] = [];
+      for (const row of rows) {
+        if (row.deleted_at) continue;
+        const otherId = row.sender_id === profile.id ? row.receiver_id : row.sender_id;
+        if (!map.has(otherId)) {
+          otherIds.push(otherId);
+          const meta = profileNames[otherId];
+          map.set(otherId, {
+            userId: otherId,
+            name: meta?.name ?? 'Unknown member',
+            photo_path: meta?.photo_path ?? null,
+            photo_url: meta?.photo_url ?? null,
+            lastMessage: row.message,
+            lastMessageAt: row.created_at,
+            lastSenderId: row.sender_id,
+            unread: false,
+          });
+        }
+      }
+      return { map, otherIds };
+    },
+    [profile?.id, profileNames]
+  );
+
+  const fetchConversations = React.useCallback(
+    async (opts: { silent?: boolean } = {}) => {
+      if (!profile?.id) {
+        setInitialLoading(false);
+        return;
+      }
+      const silent = !!opts.silent;
+      if (!silent) setInitialLoading(true);
+      else setRefreshing(true);
+      setError(null);
+
+      const supabase = createClientSupabaseBrowser();
+      const { data, error: fetchError } = await supabase
+        .from('private_messages')
+        .select('id, sender_id, receiver_id, message, created_at, deleted_at')
+        .or(`sender_id.eq.${profile.id},receiver_id.eq.${profile.id}`)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (fetchError) {
+        console.error('[MESSAGES INBOX FETCH ERROR]', {
+          message: fetchError.message,
+          code: fetchError.code,
+          details: fetchError.details,
+          hint: fetchError.hint,
+        });
+        setError(fetchError.message || 'Failed to load conversations.');
+        setInitialLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      const rows = (data ?? []) as Array<{
+        id: string;
+        sender_id: string;
+        receiver_id: string;
+        message: string;
+        created_at: string;
+        deleted_at: string | null;
+      }>;
+
+      const result = applyConversationsFromMessages(rows);
+      if (!result) {
+        setInitialLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      const { map, otherIds } = result;
+
+      if (otherIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, name, photo_path, photo_url')
+          .in('id', otherIds);
+        if (profilesData) {
+          const newMeta: Record<string, ProfileMeta> = {};
+          for (const p of profilesData as Array<{ id: string; name: string; photo_path: string | null; photo_url: string | null }>) {
+            newMeta[p.id] = { name: p.name, photo_path: p.photo_path, photo_url: p.photo_url };
+            const conv = map.get(p.id);
+            if (conv) {
+              conv.name = p.name;
+              conv.photo_path = p.photo_path;
+              conv.photo_url = p.photo_url;
+            }
+          }
+          mergeProfileMeta(newMeta);
+        }
+      }
+
+      setConversations((prev) => {
+        const byId = new Map(prev.map((c) => [c.userId, c]));
+        for (const [id, conv] of map.entries()) {
+          const old = byId.get(id);
+          byId.set(id, {
+            ...conv,
+            unread: old?.unread ?? conv.unread,
+          });
+        }
+        return sortConversations(Array.from(byId.values()));
+      });
+
+      setInitialLoading(false);
+      setRefreshing(false);
+    },
+    [profile?.id, applyConversationsFromMessages, mergeProfileMeta]
+  );
+
+  React.useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
 
   const upsertConversation = React.useCallback(
     (row: { sender_id: string; receiver_id: string; message: string; created_at: string; id?: string; deleted_at?: string | null }) => {
       if (!profile?.id) return;
-      if (row.sender_id !== profile.id && row.receiver_id !== profile.id) return;
       if (row.deleted_at) return;
       const otherId = row.sender_id === profile.id ? row.receiver_id : row.sender_id;
+      if (otherId === profile.id) return;
       const isFromOther = row.sender_id !== profile.id;
-
       setConversations((prev) => {
         const existing = prev.find((c) => c.userId === otherId);
         const meta = profileNames[otherId];
         const conv: Conversation = {
           userId: otherId,
-          name: meta?.name ?? existing?.name ?? 'Loading…',
+          name: meta?.name ?? existing?.name ?? 'Unknown member',
           photo_path: meta?.photo_path ?? existing?.photo_path ?? null,
           photo_url: meta?.photo_url ?? existing?.photo_url ?? null,
           lastMessage: row.message,
@@ -80,102 +223,20 @@ export default function MessagesPage() {
           unread: isFromOther ? true : (existing?.unread ?? false),
         };
         const filtered = prev.filter((c) => c.userId !== otherId);
-        return [conv, ...filtered].sort(
-          (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-        );
+        return [conv, ...filtered];
       });
     },
     [profile?.id, profileNames]
   );
 
-  const fetchConversations = React.useCallback(async () => {
-    if (!profile?.id) return;
-    const supabase = createClientSupabaseBrowser();
-    const { data, error } = await supabase
-      .from('private_messages')
-      .select('id, sender_id, receiver_id, message, created_at, deleted_at')
-      .or(`sender_id.eq.${profile.id},receiver_id.eq.${profile.id}`)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(200);
-
-    if (error) {
-      console.error('[MESSAGES INBOX FETCH ERROR]', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-      });
-      setLoading(false);
-      return;
-    }
-
-    const map = new Map<string, Conversation>();
-    const otherIds: string[] = [];
-    for (const row of (data ?? []) as Array<{
-      id: string;
-      sender_id: string;
-      receiver_id: string;
-      message: string;
-      created_at: string;
-      deleted_at: string | null;
-    }>) {
-      if (row.deleted_at) continue;
-      const otherId = row.sender_id === profile.id ? row.receiver_id : row.sender_id;
-      if (!map.has(otherId)) {
-        otherIds.push(otherId);
-        map.set(otherId, {
-          userId: otherId,
-          name: profileNames[otherId]?.name ?? 'Loading…',
-          photo_path: profileNames[otherId]?.photo_path ?? null,
-          photo_url: profileNames[otherId]?.photo_url ?? null,
-          lastMessage: row.message,
-          lastMessageAt: row.created_at,
-          lastSenderId: row.sender_id,
-          unread: false,
-        });
-      }
-    }
-
-    if (otherIds.length > 0) {
-      const { data: profilesData } = await supabase
-        .from('profiles')
-        .select('id, name, photo_path, photo_url')
-        .in('id', otherIds);
-      if (profilesData) {
-        const newNames: Record<string, { name: string; photo_path: string | null; photo_url: string | null }> = { ...profileNames };
-        for (const p of profilesData as Array<{ id: string; name: string; photo_path: string | null; photo_url: string | null }>) {
-          newNames[p.id] = { name: p.name, photo_path: p.photo_path, photo_url: p.photo_url };
-          const conv = map.get(p.id);
-          if (conv) {
-            conv.name = p.name;
-            conv.photo_path = p.photo_path;
-            conv.photo_url = p.photo_url;
-          }
-        }
-        setProfileNames(newNames);
-      }
-    }
-
-    setConversations(Array.from(map.values()).sort(
-      (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-    ));
-    setLoading(false);
-  }, [profile?.id, profileNames]);
-
-  React.useEffect(() => {
-    if (!profile?.id) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    fetchConversations();
-  }, [profile?.id, fetchConversations]);
-
   React.useEffect(() => {
     if (!profile?.id) return;
     const supabase = createClientSupabaseBrowser();
     const channelName = `messages-inbox-${profile.id}`;
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
     const channel = supabase
       .channel(channelName, { config: { broadcast: { self: false }, presence: { key: profile.id } } })
       .on(
@@ -184,9 +245,9 @@ export default function MessagesPage() {
         async (payload: any) => {
           if (payload.eventType === 'INSERT') {
             const newRow = payload.new as any;
-            const isMine = newRow.sender_id === profile.id && newRow.receiver_id === profile.id;
-            if (isMine) return;
-            const otherId = newRow.sender_id === profile.id ? newRow.receiver_id : newRow.sender_id;
+            const otherId =
+              newRow.sender_id === profile.id ? newRow.receiver_id : newRow.sender_id;
+            if (otherId === profile.id) return;
             if (!profileNames[otherId]) {
               const { data: prof } = await supabase
                 .from('profiles')
@@ -194,7 +255,9 @@ export default function MessagesPage() {
                 .eq('id', otherId)
                 .maybeSingle();
               if (prof) {
-                setProfileNames((prev) => ({ ...prev, [otherId]: { name: prof.name, photo_path: prof.photo_path, photo_url: prof.photo_url } }));
+                mergeProfileMeta({
+                  [otherId]: { name: prof.name, photo_path: prof.photo_path, photo_url: prof.photo_url },
+                });
               }
             }
             upsertConversation(newRow);
@@ -203,7 +266,7 @@ export default function MessagesPage() {
             if (updated.deleted_at) return;
             upsertConversation(updated);
           } else if (payload.eventType === 'DELETE') {
-            fetchConversations();
+            fetchConversations({ silent: true });
           }
         }
       )
@@ -219,7 +282,7 @@ export default function MessagesPage() {
         channelRef.current = null;
       }
     };
-  }, [profile?.id, profileNames, upsertConversation, fetchConversations]);
+  }, [profile?.id, profileNames, upsertConversation, fetchConversations, mergeProfileMeta]);
 
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -232,36 +295,17 @@ export default function MessagesPage() {
     router.push(`/messages/${id}`);
   };
 
-  if (loading) {
-    return (
-      <main className="min-h-screen">
-        <SpaceBackground particleCount={40} enableParallax={false} />
-        <Section title="Messages" subtitle="Your private conversations." className="relative z-10">
-          <div className="max-w-3xl mx-auto space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <GlassCard key={i} className="p-4">
-                <div className="animate-pulse flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-slate-700/50" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-slate-700/50 rounded w-1/3" />
-                    <div className="h-3 bg-slate-700/50 rounded w-1/2" />
-                  </div>
-                </div>
-              </GlassCard>
-            ))}
-          </div>
-        </Section>
-      </main>
-    );
-  }
+  const showInitialSkeleton = initialLoading && conversations.length === 0;
+  const showError = !initialLoading && !!error && conversations.length === 0;
+  const showEmpty = !initialLoading && !error && conversations.length === 0;
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen pb-24 md:pb-12">
       <SpaceBackground particleCount={40} enableParallax={false} />
       <Section title="Messages" subtitle="Your private conversations." className="relative z-10">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto px-3 sm:px-0">
           <div className="flex items-center justify-between gap-3 mb-4">
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               <input
                 type="text"
@@ -282,7 +326,7 @@ export default function MessagesPage() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2 mb-3 text-xs text-slate-500">
+          <div className="flex items-center gap-2 mb-3 text-xs text-slate-500" aria-live="polite">
             <span
               className={
                 realtimeStatus === 'connected'
@@ -292,10 +336,37 @@ export default function MessagesPage() {
                   : 'w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse'
               }
             />
-            {realtimeStatus === 'connected' ? 'Live' : realtimeStatus === 'failed' ? 'Disconnected' : 'Connecting…'}
+            {realtimeStatus === 'connected'
+              ? 'Live'
+              : realtimeStatus === 'failed'
+              ? 'Disconnected'
+              : 'Connecting…'}
+            {refreshing && <span className="text-slate-600">• refreshing</span>}
           </div>
 
-          {filtered.length === 0 ? (
+          {showInitialSkeleton ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="glass rounded-2xl border border-white/10 p-3 sm:p-4 flex items-center gap-3 sm:gap-4 min-h-[64px] animate-pulse"
+                >
+                  <div className="w-12 h-12 rounded-full bg-slate-700/50 shrink-0" />
+                  <div className="flex-1 space-y-2 min-w-0">
+                    <div className="h-3.5 bg-slate-700/50 rounded w-1/3" />
+                    <div className="h-3 bg-slate-700/50 rounded w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : showError ? (
+            <div className="glass rounded-2xl border border-red-500/20 p-6 text-center">
+              <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-2" />
+              <p className="text-white font-medium mb-1">Couldn&apos;t load conversations</p>
+              <p className="text-sm text-slate-400 mb-4 break-words">{error}</p>
+              <GalaxyButton onClick={() => fetchConversations()}>Retry</GalaxyButton>
+            </div>
+          ) : showEmpty ? (
             <EmptyState
               title="No messages yet"
               description="Start your first private conversation with a class member."
@@ -320,7 +391,12 @@ export default function MessagesPage() {
                     onClick={() => openConversation(conv.userId)}
                     className="w-full text-left"
                   >
-                    <GlassCard hover className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4 cursor-pointer min-h-[64px]">
+                    <GlassCard
+                      hover
+                      className={`p-3 sm:p-4 flex items-center gap-3 sm:gap-4 cursor-pointer min-h-[64px] ${
+                        conv.unread ? 'bg-galaxy-500/[0.04] border-galaxy-500/20' : ''
+                      }`}
+                    >
                       <div className="relative shrink-0">
                         {conv.photo_url || conv.photo_path ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -335,17 +411,27 @@ export default function MessagesPage() {
                           </div>
                         )}
                         {conv.unread && (
-                          <span className="absolute top-0 right-0 w-3 h-3 rounded-full bg-galaxy-400 ring-2 ring-slate-900" />
+                          <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-galaxy-400 ring-2 ring-slate-900" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <p className={`truncate ${conv.unread ? 'font-semibold text-white' : 'font-medium text-white'}`}>
+                          <p
+                            className={`truncate ${
+                              conv.unread ? 'font-semibold text-white' : 'font-medium text-white'
+                            }`}
+                          >
                             {conv.name}
                           </p>
-                          <span className="text-[11px] text-slate-500 shrink-0">{formatRelative(conv.lastMessageAt)}</span>
+                          <span className="text-[11px] text-slate-500 shrink-0">
+                            {formatRelative(conv.lastMessageAt)}
+                          </span>
                         </div>
-                        <p className={`text-sm truncate ${conv.unread ? 'text-slate-200' : 'text-slate-400'}`}>
+                        <p
+                          className={`text-sm truncate ${
+                            conv.unread ? 'text-slate-200' : 'text-slate-400'
+                          }`}
+                        >
                           {isFromOther ? '' : <span className="text-slate-500">You: </span>}
                           {conv.lastMessage}
                         </p>
@@ -354,6 +440,11 @@ export default function MessagesPage() {
                   </button>
                 );
               })}
+              {filtered.length === 0 && search.trim() && (
+                <div className="text-center text-slate-500 text-sm py-8">
+                  No conversations match &ldquo;{search}&rdquo;
+                </div>
+              )}
             </div>
           )}
         </div>
